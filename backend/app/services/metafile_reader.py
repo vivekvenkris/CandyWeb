@@ -1,9 +1,113 @@
 import os
 import json
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Tuple
 from datetime import datetime
+from multiprocessing import Pool, cpu_count
 
 from app.models.candidate import MetaFile, Beam
+from config import settings
+
+
+# Helper functions for neighbor calculation (module-level for multiprocessing)
+import math
+import numpy as np
+
+
+def _position_within_beam(beam: Beam, ra: float, dec: float) -> bool:
+    """Check if a point (ra, dec) in hours/degrees is within a beam ellipse"""
+    if not all([beam.ellipse_x, beam.ellipse_y, beam.ellipse_angle is not None]):
+        # Fallback: simple distance check
+        ra_deg = ra * 15.0
+        dec_deg = dec
+        beam_ra_deg = beam.ra * 15.0
+        beam_dec_deg = beam.dec
+        distance = math.sqrt((ra_deg - beam_ra_deg)**2 + (dec_deg - beam_dec_deg)**2)
+        return distance < 0.1
+
+    # Convert RA from hours to degrees
+    x = ra * 15.0
+    y = dec
+    x0 = beam.ra * 15.0
+    y0 = beam.dec
+    a = beam.ellipse_x
+    b = beam.ellipse_y
+    theta = -beam.ellipse_angle
+
+    # Rotate point into ellipse coordinate system
+    cos_theta = math.cos(theta)
+    sin_theta = math.sin(theta)
+    xr = cos_theta * (x - x0) - sin_theta * (y - y0)
+    yr = sin_theta * (x - x0) + cos_theta * (y - y0)
+
+    # Check if point is inside ellipse
+    return (xr**2 / a**2) + (yr**2 / b**2) <= 1.0
+
+
+def _check_containment(b1: Beam, b2: Beam) -> bool:
+    """Check if the center of b1 is inside b2 or vice versa"""
+    return _position_within_beam(b2, b1.ra, b1.dec) or \
+           _position_within_beam(b1, b2.ra, b2.dec)
+
+
+def _ellipse_parametric(t_values, a, b, x0, y0, theta):
+    """Generate parametric points on an ellipse"""
+    cos_t = np.cos(t_values)
+    sin_t = np.sin(t_values)
+    x = x0 + a * cos_t * np.cos(theta) - b * sin_t * np.sin(theta)
+    y = y0 + a * cos_t * np.sin(theta) + b * sin_t * np.cos(theta)
+    return x, y
+
+
+def _discrete_overlap(b1: Beam, b2: Beam, num_points: int = 100) -> bool:
+    """Check if two beam ellipses overlap using discrete point sampling"""
+    # First check if centers are contained
+    if _check_containment(b1, b2):
+        return True
+
+    # Check if either beam is missing ellipse parameters
+    if not all([b1.ellipse_x, b1.ellipse_y, b1.ellipse_angle is not None]):
+        return False
+    if not all([b2.ellipse_x, b2.ellipse_y, b2.ellipse_angle is not None]):
+        return False
+
+    # Generate points on the perimeter of beam1
+    t_values = np.linspace(0, 2 * np.pi, num_points)
+
+    # Convert RA from hours to degrees for calculations
+    b1_ra_deg = b1.ra * 15.0
+    b1_dec_deg = b1.dec
+
+    x1, y1 = _ellipse_parametric(
+        t_values,
+        b1.ellipse_x,
+        b1.ellipse_y,
+        b1_ra_deg,
+        b1_dec_deg,
+        b1.ellipse_angle
+    )
+
+    # Check if any points on the perimeter of b1 lie inside b2
+    for x, y in zip(x1, y1):
+        ra_hours = x / 15.0
+        if _position_within_beam(b2, ra_hours, y):
+            return True
+
+    return False
+
+
+def _compute_neighbors_for_beam(args: Tuple[str, Beam, Dict[str, Beam]]) -> Tuple[str, List[str]]:
+    """Compute neighbors for a single beam (for parallel processing)"""
+    beam_name, beam, all_beams = args
+    neighbor_names = []
+
+    for other_name, other_beam in all_beams.items():
+        if beam_name == other_name:
+            continue
+
+        if _discrete_overlap(beam, other_beam):
+            neighbor_names.append(other_name)
+
+    return beam_name, neighbor_names
 
 
 class MetaFileReader:
@@ -178,8 +282,9 @@ class MetaFileReader:
             metafile.min_dec = min(decs)
             metafile.max_dec = max(decs)
 
-        # Find neighbors for all beams
-        MetaFileReader._find_neighbours(metafile)
+        # Find neighbors for all beams (if enabled in config)
+        if settings.CALCULATE_NEIGHBORS:
+            MetaFileReader._find_neighbours(metafile)
 
         return metafile
 
@@ -201,58 +306,45 @@ class MetaFileReader:
     @staticmethod
     def _find_neighbours(metafile: MetaFile):
         """
-        Find neighboring beams for each beam based on Gaussian beam intersection
+        Find neighboring beams for each beam based on ellipse overlap detection
 
-        Mirrors Java MetaFile.findNeighbours()
+        Uses discrete point sampling on ellipse perimeters to detect overlaps
+        Parallel processing using multiprocessing Pool for performance
         """
-        import math
+        if not metafile.beams:
+            return
 
-        def beam_intersection(b1: Beam, b2: Beam) -> float:
-            """Calculate Gaussian beam intersection value"""
-            if not all([b2.ellipse_x, b2.ellipse_y, b2.ellipse_angle]):
-                # If ellipse params missing, use distance
-                ra_diff = (b1.ra - b2.ra) * 15.0  # Convert RA hours to degrees
-                dec_diff = b1.dec - b2.dec
-                distance = math.sqrt(ra_diff**2 + dec_diff**2)
-                return math.exp(-distance**2)
+        # Determine number of processes
+        num_cores = settings.NEIGHBOR_CALC_CORES
+        if num_cores <= 0:
+            num_cores = cpu_count()
 
-            # Gaussian ellipse intersection calculation
-            x_mean = b1.ra
-            y_mean = b1.dec
-            x = b2.ra
-            y = b2.dec
-            angle = b2.ellipse_angle - math.pi
-            x_sigma = b2.ellipse_x
-            y_sigma = b2.ellipse_y
+        num_beams = len(metafile.beams)
+        # Use fewer processes if we have fewer beams
+        num_processes = min(num_cores, num_beams)
 
-            a = (math.cos(angle)**2 / (2 * x_sigma**2) +
-                 math.sin(angle)**2 / (2 * y_sigma**2))
-            b = (-math.sin(2 * angle) / (4 * x_sigma**2) +
-                 math.sin(2 * angle) / (4 * y_sigma**2))
-            c = (math.sin(angle)**2 / (2 * x_sigma**2) +
-                 math.cos(angle)**2 / (2 * y_sigma**2))
-            d = (a * (x - x_mean)**2 +
-                 2 * b * (x - x_mean) * (y - y_mean) +
-                 c * (y - y_mean)**2)
+        print(f"Computing neighbors for {num_beams} beams using {num_processes} processes...")
 
-            # Avoid overflow in exp - cap d to reasonable range
-            d = min(max(d, -100), 100)
-            try:
-                return math.exp(-d)  # Note: should be -d for Gaussian
-            except (OverflowError, ValueError):
-                return 0.0
+        # Prepare arguments for parallel processing
+        args_list = [
+            (beam_name, beam, metafile.beams)
+            for beam_name, beam in metafile.beams.items()
+        ]
 
-        # For each beam, find top 6 neighbors
-        for b1_name, b1 in metafile.beams.items():
-            beam_responses = {}
+        # Use multiprocessing Pool to compute neighbors in parallel
+        try:
+            with Pool(processes=num_processes) as pool:
+                results = pool.map(_compute_neighbors_for_beam, args_list)
 
-            for b2_name, b2 in metafile.beams.items():
-                if b1_name == b2_name:
-                    continue
-                beam_responses[b2_name] = beam_intersection(b1, b2)
+            # Update beams with computed neighbors
+            for beam_name, neighbor_names in results:
+                metafile.beams[beam_name].neighbour_beams = neighbor_names
 
-            # Sort by intersection value and take top 6
-            sorted_beams = sorted(beam_responses.items(), key=lambda x: x[1])
-            top_6 = [name for name, _ in sorted_beams[:min(6, len(sorted_beams))]]
-
-            b1.neighbour_beams = top_6
+            print(f"Neighbor computation complete. Average neighbors per beam: {sum(len(n) for _, n in results) / len(results):.1f}")
+        except Exception as e:
+            print(f"Error in parallel neighbor computation: {e}")
+            # Fallback to sequential processing
+            print("Falling back to sequential processing...")
+            for beam_name, beam in metafile.beams.items():
+                _, neighbor_names = _compute_neighbors_for_beam((beam_name, beam, metafile.beams))
+                beam.neighbour_beams = neighbor_names

@@ -106,4 +106,22 @@ export const getMetafile = (baseDir, utc = null) => {
   return api.get(`/candidates/${baseDir}/metafile`, { params })
 }
 
+export const searchPulsarScraper = (baseDir, lineNum) => {
+  return api.get('/candidates/pulsar-scraper/search', {
+    params: {
+      base_dir: baseDir,
+      line_num: lineNum,
+    },
+  })
+}
+
+export const searchPsrcat = (baseDir, lineNum) => {
+  return api.get('/candidates/psrcat/search', {
+    params: {
+      base_dir: baseDir,
+      line_num: lineNum,
+    },
+  })
+}
+
 export default api

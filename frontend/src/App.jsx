@@ -7,7 +7,7 @@ import ResizableSplit from './components/ResizableSplit'
 import DraggablePanel from './components/DraggablePanel'
 import ResizableAccordionContainer from './components/ResizableAccordionContainer'
 import AccordionPanel from './components/AccordionPanel'
-import BeamMap from './components/BeamMap'
+import BeamMapCanvas from './components/BeamMapCanvas'
 import Diagnostics from './components/Diagnostics'
 import BulkClassify from './components/BulkClassify'
 import ScatterPlot from './components/ScatterPlot'
@@ -32,6 +32,9 @@ function App() {
   const [bulkClassifyMode, setBulkClassifyMode] = useState('docked')
   const [scatterPlotMode, setScatterPlotMode] = useState('docked')
 
+  // BulkClassify counts for title
+  const [bulkClassifyCounts, setBulkClassifyCounts] = useState({ unclassified: 0, classified: 0 })
+
   // Ref for PNG viewer (for panel snapping)
   const pngViewerRef = useRef(null)
 
@@ -49,6 +52,13 @@ function App() {
   const [sortOrder, setSortOrder] = useState('desc')
 
   const currentCandidate = filteredCandidates[currentIndex]
+
+  // Reset counts when no candidate is selected
+  useEffect(() => {
+    if (!currentCandidate) {
+      setBulkClassifyCounts({ unclassified: 0, classified: 0 })
+    }
+  }, [currentCandidate])
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -114,6 +124,23 @@ function App() {
     } catch (err) {
       console.error('Error loading UTC data:', err.response?.data || err.message)
       setStatusMessage(`Error loading data for UTC ${utc}: ${err.message}`)
+    }
+  }
+
+  const handleBulkClassified = async () => {
+    // After bulk classification, reload all candidates for this UTC to update scatter plot
+    if (!selectedUTC) return
+
+    try {
+      const allCandidatesResponse = await getAllCandidates(baseDir)
+      const allCandidates = allCandidatesResponse.data
+      const candidatesInUTC = allCandidates.filter(c => c.utc_start === selectedUTC)
+      setAllCandidatesInUTC(candidatesInUTC)
+
+      // Also refresh the filtered candidates
+      await handleFilterCandidates()
+    } catch (err) {
+      console.error('Error refreshing candidates after bulk classification:', err)
     }
   }
 
@@ -231,76 +258,69 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>CandyWeb - Pulsar Candidate Viewer</h1>
-        <p className="subtitle">Web-based viewer for TRAPUM/MPIFR MeerKAT surveys</p>
-      </header>
-
-      {/* Horizontal Control Bar */}
-      <div className="control-bar">
-        <div className="control-bar-section">
+      {/* Compact Toolbar with Logo */}
+      <div className="toolbar">
+        <div className="toolbar-controls">
           <DirectorySelector onLoadComplete={handleLoadComplete} />
-        </div>
 
-        {utcs.length > 0 && (
-          <div className="control-bar-section">
+          {utcs.length > 0 && (
             <UTCSelector
               utcs={utcs}
               selectedUTC={selectedUTC}
               onSelectUTC={handleSelectUTC}
             />
-          </div>
-        )}
+          )}
 
-        {selectedUTC && (
-          <>
-            <div className="control-bar-section">
+          {selectedUTC && (
+            <>
               <FilterDropdown
                 filterTypes={filterTypes}
                 onFilterChange={handleFilterChange}
               />
-            </div>
 
-            <div className="control-bar-section" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ fontSize: '0.85rem' }}>Sort:</label>
-              <select
-                className="select-input-compact"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="FOLD_SNR">FOLD_SNR</option>
-                <option value="FFT_SNR">FFT_SNR</option>
-                <option value="DM">DM</option>
-                <option value="F0">F0</option>
-                <option value="ACC">ACC</option>
-              </select>
-              <div className="btn-group">
-                <button
-                  className={`btn btn-small ${sortOrder === 'asc' ? 'active' : ''}`}
-                  onClick={() => setSortOrder('asc')}
+              <div className="toolbar-sort-group">
+                <label>Sort:</label>
+                <select
+                  className="select-input-compact"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
                 >
-                  ↑
-                </button>
-                <button
-                  className={`btn btn-small ${sortOrder === 'desc' ? 'active' : ''}`}
-                  onClick={() => setSortOrder('desc')}
-                >
-                  ↓
-                </button>
+                  <option value="FOLD_SNR">FOLD_SNR</option>
+                  <option value="FFT_SNR">FFT_SNR</option>
+                  <option value="DM">DM</option>
+                  <option value="F0">F0</option>
+                  <option value="ACC">ACC</option>
+                </select>
+                <div className="btn-group">
+                  <button
+                    className={`btn btn-small ${sortOrder === 'asc' ? 'active' : ''}`}
+                    onClick={() => setSortOrder('asc')}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className={`btn btn-small ${sortOrder === 'desc' ? 'active' : ''}`}
+                    onClick={() => setSortOrder('desc')}
+                  >
+                    ↓
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="control-bar-section">
               <button
-                className="btn btn-primary"
+                className="btn btn-primary btn-go"
                 onClick={handleFilterCandidates}
                 disabled={loading}
               >
                 {loading ? 'Loading...' : 'Go'}
               </button>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
+
+        <div className="toolbar-logo">
+          <span className="logo-text">CandyWeb</span>
+        </div>
       </div>
 
       <div className="app-container">
@@ -434,24 +454,6 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Bulk Classify Collapsible Pane */}
-                  {currentCandidate && (
-                    <div style={{ marginTop: '1rem' }}>
-                      <AccordionPanel
-                        title="Bulk Classify Similar Candidates"
-                        defaultOpen={false}
-                        onPopOut={bulkClassifyMode === 'docked' ? () => setBulkClassifyMode('floating') : null}
-                      >
-                        {bulkClassifyMode === 'docked' && (
-                          <BulkClassify
-                            candidate={currentCandidate}
-                            baseDir={baseDir}
-                            onClassified={() => handleFilterCandidates()}
-                          />
-                        )}
-                      </AccordionPanel>
-                    </div>
-                  )}
 
                   {/* Candidate Info Table - moved below classification buttons */}
                   <div style={{
@@ -566,31 +568,113 @@ function App() {
           }
           right={
             selectedUTC && (
-              <aside className="right-panel">
-                <ResizableAccordionContainer
-                  containerHeight="100%"
-                  panels={[
-                    {
-                      id: 'beammap',
-                      title: 'Beam Map',
-                      defaultOpen: true,
-                      defaultHeight: 500,
-                      onPopOut: beamMapMode === 'docked' ? () => setBeamMapMode('floating') : null,
-                      content: beamMapMode === 'docked' ? (
-                        <BeamMap candidate={currentCandidate} metaFile={metaFile} />
-                      ) : null
-                    },
-                    {
-                      id: 'scatterplot',
-                      title: 'Scatter Plot',
-                      defaultOpen: false,
-                      defaultHeight: 500,
-                      onPopOut: scatterPlotMode === 'docked' ? () => setScatterPlotMode('floating') : null,
-                      content: scatterPlotMode === 'docked' ? (
-                        <ScatterPlot candidates={allCandidatesInUTC} currentCandidate={currentCandidate} />
-                      ) : null
-                    },
-                    ...(currentCandidate ? [
+              <aside className="right-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* All panels in resizable accordion */}
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <ResizableAccordionContainer
+                    containerHeight="100%"
+                    panels={[
+                      {
+                        id: 'beammap-bulkclassify',
+                        title: 'Beam Map & Bulk Classify',
+                        defaultOpen: true,
+                        defaultHeight: 400,
+                        onPopOut: null,
+                        content: (
+                          <div style={{ display: 'flex', gap: '1rem', height: '100%' }}>
+                            {/* BeamMap - Left half */}
+                            <div style={{ flex: 1, background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                              <div style={{
+                                padding: '0.75rem 1rem',
+                                borderBottom: '1px solid #e5e7eb',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                background: '#f9fafb'
+                              }}>
+                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Beam Map</h3>
+                                {beamMapMode === 'docked' && (
+                                  <button
+                                    onClick={() => setBeamMapMode('floating')}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#667eea',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                      padding: '0.25rem 0.5rem'
+                                    }}
+                                    title="Pop out to floating panel"
+                                  >
+                                    ↗
+                                  </button>
+                                )}
+                              </div>
+                              <div style={{ flex: 1, overflow: 'hidden' }}>
+                                {beamMapMode === 'docked' && <BeamMapCanvas candidate={currentCandidate} metaFile={metaFile} />}
+                              </div>
+                            </div>
+
+                            {/* BulkClassify - Right half */}
+                            {currentCandidate && (
+                              <div style={{ flex: 1, background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{
+                                  padding: '0.75rem 1rem',
+                                  borderBottom: '1px solid #e5e7eb',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  background: '#f9fafb'
+                                }}>
+                                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>
+                                    Bulk Classify ({bulkClassifyCounts.unclassified} uncat, {bulkClassifyCounts.classified} cat)
+                                  </h3>
+                                  {bulkClassifyMode === 'docked' && (
+                                    <button
+                                      onClick={() => setBulkClassifyMode('floating')}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#667eea',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        padding: '0.25rem 0.5rem'
+                                      }}
+                                      title="Pop out to floating panel"
+                                    >
+                                      ↗
+                                    </button>
+                                  )}
+                                </div>
+                                <div style={{ flex: 1, overflow: 'auto' }}>
+                                  {bulkClassifyMode === 'docked' && (
+                                    <BulkClassify
+                                      candidate={currentCandidate}
+                                      baseDir={baseDir}
+                                      onClassified={handleBulkClassified}
+                                      onCountsUpdate={setBulkClassifyCounts}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      },
+                      {
+                        id: 'scatterplot',
+                        title: 'Scatter Plots',
+                        defaultOpen: false,
+                        defaultHeight: 500,
+                        onPopOut: scatterPlotMode === 'docked' ? () => setScatterPlotMode('floating') : null,
+                        content: scatterPlotMode === 'docked' ? (
+                          <ResizableSplit
+                            left={<ScatterPlot candidates={allCandidatesInUTC} currentCandidate={currentCandidate} />}
+                            right={<ScatterPlot candidates={allCandidatesInUTC} currentCandidate={currentCandidate} />}
+                            defaultLeftWidth={50}
+                          />
+                        ) : null
+                      },
                       {
                         id: 'diagnostics',
                         title: 'Diagnostics',
@@ -601,9 +685,9 @@ function App() {
                           <Diagnostics candidate={currentCandidate} baseDir={baseDir} />
                         ) : null
                       }
-                    ] : [])
-                  ]}
-                />
+                    ]}
+                  />
+                </div>
               </aside>
             )
           }
@@ -619,7 +703,7 @@ function App() {
           onClose={() => setBeamMapMode('docked')}
           snapTargetRef={pngViewerRef}
         >
-          <BeamMap
+          <BeamMapCanvas
             candidate={currentCandidate}
             metaFile={metaFile}
           />
@@ -655,7 +739,7 @@ function App() {
 
       {bulkClassifyMode === 'floating' && (
         <DraggablePanel
-          title="Bulk Classify Similar Candidates"
+          title={`Bulk Classify Similar Candidates (${bulkClassifyCounts.unclassified} unclassified, ${bulkClassifyCounts.classified} classified)`}
           initialPosition={{ x: 200, y: 200 }}
           initialSize={{ width: 650, height: 550 }}
           onClose={() => setBulkClassifyMode('docked')}
@@ -664,7 +748,8 @@ function App() {
           <BulkClassify
             candidate={currentCandidate}
             baseDir={baseDir}
-            onClassified={() => handleFilterCandidates()}
+            onClassified={handleBulkClassified}
+            onCountsUpdate={setBulkClassifyCounts}
           />
         </DraggablePanel>
       )}

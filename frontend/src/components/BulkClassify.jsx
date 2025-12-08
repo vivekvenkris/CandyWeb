@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { getSimilarCandidates, bulkClassify } from '../api/client'
 import { ExternalLink } from 'lucide-react'
 
-export default function BulkClassify({ candidate, baseDir, onClassified }) {
+export default function BulkClassify({ candidate, baseDir, onClassified, onCountsUpdate }) {
   const [similarCandidates, setSimilarCandidates] = useState([])
   const [loading, setLoading] = useState(false)
   const [classifying, setClassifying] = useState(false)
@@ -28,8 +28,14 @@ export default function BulkClassify({ candidate, baseDir, onClassified }) {
 
       // Filter out already classified candidates
       const unclassified = similar.filter(c => c.candidate_type === 'UNCAT')
+      const classified = similar.filter(c => c.candidate_type !== 'UNCAT')
 
       setSimilarCandidates(unclassified)
+
+      // Notify parent about counts
+      if (onCountsUpdate) {
+        onCountsUpdate({ unclassified: unclassified.length, classified: classified.length })
+      }
 
       if (unclassified.length === 0) {
         setMessage('No similar uncategorized candidates found')
@@ -37,6 +43,9 @@ export default function BulkClassify({ candidate, baseDir, onClassified }) {
     } catch (err) {
       console.error('Error loading similar candidates:', err)
       setMessage('Error loading similar candidates')
+      if (onCountsUpdate) {
+        onCountsUpdate({ unclassified: 0, classified: 0 })
+      }
     } finally {
       setLoading(false)
     }
@@ -103,12 +112,8 @@ export default function BulkClassify({ candidate, baseDir, onClassified }) {
   return (
     <div style={{ padding: '1rem' }}>
       <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '1.1rem' }}>
-        Similar Candidates
+        Similar Candidates with harmonically related frequencies and similar DM
       </h3>
-
-      <p style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '1rem' }}>
-        Candidates with harmonically related frequencies and similar DM
-      </p>
 
       {loading && (
         <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>

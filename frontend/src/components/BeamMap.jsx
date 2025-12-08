@@ -10,6 +10,14 @@ const BeamMap = memo(function BeamMap({ candidate, metaFile, beams = [] }) {
     // If we have metafile with beams, draw ellipses
     if (metaFile && metaFile.beams) {
       console.log('Metafile has beams:', Object.keys(metaFile.beams).length)
+
+      // Get the current candidate's beam and its neighbors
+      const currentBeamName = candidate?.beam_name
+      const currentBeamData = currentBeamName ? metaFile.beams[currentBeamName] : null
+      const neighborBeamNames = currentBeamData?.neighbour_beams || []
+
+      console.log('Current beam:', currentBeamName, 'Neighbors:', neighborBeamNames)
+
       // Draw all beam ellipses
       Object.values(metaFile.beams).forEach(beam => {
         // Generate ellipse points
@@ -24,9 +32,8 @@ const BeamMap = memo(function BeamMap({ candidate, metaFile, beams = [] }) {
           beam.ellipse_angle
         )
 
-        const isCurrentBeam = candidate && beam.name === candidate.beam_name
-        const isNeighbor = candidate && (beam.neighbour_beams?.includes(candidate.beam_name) ||
-                          candidate.beam?.neighbour_beams?.includes(beam.name))
+        const isCurrentBeam = candidate && beam.name === currentBeamName
+        const isNeighbor = candidate && neighborBeamNames.includes(beam.name)
 
         data.push({
           x: points.x,

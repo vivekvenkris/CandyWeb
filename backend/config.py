@@ -30,6 +30,22 @@ class Settings(BaseSettings):
     # Max candidates to return in one request (pagination)
     MAX_CANDIDATES_PER_REQUEST: int = 10000
 
+    # Enable neighbor beam calculation
+    # Set to False to skip neighbor calculation and speed up metafile loading
+    CALCULATE_NEIGHBORS: bool = False
+
+    # Number of CPU cores to use for neighbor beam calculation (if enabled)
+    # Set to 0 to use all available cores, or specify 1-N cores
+    NEIGHBOR_CALC_CORES: int = 8
+
+    # Pulsar scraper database search parameters
+    PULSAR_SCRAPER_RADIUS: float = 5.0  # Search radius in arcminutes
+    PULSAR_SCRAPER_DM_TOL: float = 10.0  # DM tolerance in pc/cc
+
+    # PSRCAT database path and search radius
+    PSRCAT_DB_PATH: str = "/Users/vkrishnan/dev/CandyWeb/psrcat.db"
+    PSRCAT_SEARCH_RADIUS_DEG: float = 2.0  # Search radius in degrees for PSRCAT matching
+
     class Config:
         env_file = ".env"
         case_sensitive = True

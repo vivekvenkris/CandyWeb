@@ -65,60 +65,31 @@ export default function DirectorySelector({ onLoadComplete }) {
   }
 
   return (
-    <div className="control-section">
-      <h2>Directory Selection</h2>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <select
+        className="select-input-compact"
+        value={selectedDir}
+        onChange={(e) => setSelectedDir(e.target.value)}
+        disabled={loading}
+        style={{ minWidth: '200px' }}
+        title={serverRoot ? `Server root: ${serverRoot}` : 'Select a data directory'}
+      >
+        <option value="">Select Directory...</option>
+        {directories.map((dir) => (
+          <option key={dir.path} value={dir.path} title={dir.path}>
+            {dir.name}
+          </option>
+        ))}
+      </select>
 
-      {serverRoot && (
-        <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-          Server root: {serverRoot}
-        </p>
-      )}
-
-      {error && (
-        <div style={{
-          padding: '0.75rem',
-          backgroundColor: '#fee',
-          border: '1px solid #fcc',
-          borderRadius: '4px',
-          marginBottom: '1rem',
-          color: '#c00'
-        }}>
-          {error}
-        </div>
-      )}
-
-      <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <label style={{ whiteSpace: 'nowrap' }}>Select Data Directory:</label>
-        <select
-          className="select-input"
-          value={selectedDir}
-          onChange={(e) => setSelectedDir(e.target.value)}
-          disabled={loading}
-          style={{ flex: 1 }}
-        >
-          <option value="">-- Select Directory --</option>
-          {directories.map((dir) => (
-            <option key={dir.path} value={dir.path}>
-              {dir.name} ✓
-            </option>
-          ))}
-        </select>
-
-        <button
-          className="btn btn-primary"
-          onClick={handleLoad}
-          disabled={loading || !selectedDir}
-          style={{ flexShrink: 0 }}
-        >
-          {loading ? 'Loading...' : 'Load Candidates'}
-        </button>
-      </div>
-
-      {directories.length > 0 && (
-        <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
-          Found {directories.length} observation{directories.length !== 1 ? 's' : ''}
-        </p>
-      )}
+      <button
+        className="btn btn-primary"
+        onClick={handleLoad}
+        disabled={loading || !selectedDir}
+        style={{ whiteSpace: 'nowrap' }}
+      >
+        {loading ? 'Loading...' : 'Load Candidates'}
+      </button>
     </div>
   )
 }

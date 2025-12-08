@@ -1,4 +1,4 @@
-import { useMemo, useState, memo } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import Plot from 'react-plotly.js'
 
 const PLOT_PARAMETERS = [
@@ -37,12 +37,38 @@ const CLASSIFICATION_LABELS = {
   'UNCAT': 'Uncategorized'
 }
 
-const ScatterPlot = memo(function ScatterPlot({ candidates = [], currentCandidate = null }) {
+function ScatterPlot({ candidates = [], currentCandidate = null }) {
   const [xParam, setXParam] = useState('dm_user')
   const [yParam, setYParam] = useState('p0')
   const [logX, setLogX] = useState(false)
   const [logY, setLogY] = useState(true)
   const [colorBy, setColorBy] = useState('classification')
+  const containerRef = useRef(null)
+  const plotRef = useRef(null)
+
+  // Force plot to update when container size changes
+  useEffect(() => {
+    let timeoutId = null
+    const resizeObserver = new ResizeObserver(() => {
+      // Debounce the resize updates to avoid excessive re-renders
+      if (timeoutId) clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => {
+        // Force Plotly to relayout
+        if (plotRef.current && window.Plotly) {
+          window.Plotly.Plots.resize(plotRef.current)
+        }
+      }, 50)
+    })
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current)
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      resizeObserver.disconnect()
+    }
+  }, [])
 
   const plotData = useMemo(() => {
     console.log('ScatterPlot rendering with candidates:', candidates.length)
@@ -136,7 +162,8 @@ const ScatterPlot = memo(function ScatterPlot({ candidates = [], currentCandidat
       },
       margin: { l: 60, r: 150, t: 60, b: 60 },
       plot_bgcolor: '#f9fafb',
-      paper_bgcolor: 'white'
+      paper_bgcolor: 'white',
+      autosize: true
     }
   }, [xParam, yParam, logX, logY])
 
@@ -227,7 +254,7 @@ const ScatterPlot = memo(function ScatterPlot({ candidates = [], currentCandidat
       </div>
 
       {/* Plot */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0 }}>
         {candidates.length === 0 ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
             <p>Load candidates to view scatter plot</p>
@@ -239,11 +266,14 @@ const ScatterPlot = memo(function ScatterPlot({ candidates = [], currentCandidat
             config={config}
             style={{ width: '100%', height: '100%' }}
             useResizeHandler={true}
+            divId="scatter-plot"
+            onInitialized={(_figure, graphDiv) => { plotRef.current = graphDiv }}
+            onUpdate={(_figure, graphDiv) => { plotRef.current = graphDiv }}
           />
         )}
       </div>
     </div>
   )
-})
+}
 
 export default ScatterPlot

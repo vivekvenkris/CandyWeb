@@ -29,48 +29,41 @@ export default function UTCSelector({ utcs, selectedUTC, onSelectUTC }) {
   }
 
   return (
-    <div className="control-section">
-      <h2>UTC Selection</h2>
-      <div className="form-group">
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button
-            className="btn btn-small"
-            onClick={handlePrevious}
-            disabled={currentIndex === 0}
-          >
-            {'<<'}
-          </button>
+    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <button
+        className="btn btn-small"
+        onClick={handlePrevious}
+        disabled={currentIndex === 0}
+        title="Previous UTC"
+      >
+        {'<<'}
+      </button>
 
-          <select
-            className="select-input"
-            value={selectedUTC || ''}
-            onChange={(e) => {
-              const index = utcs.indexOf(e.target.value)
-              handleSelect(e.target.value, index)
-            }}
-            style={{ flex: 1 }}
-          >
-            <option value="">-- Select UTC --</option>
-            {utcs.map((utc) => (
-              <option key={utc} value={utc}>
-                {utc}
-              </option>
-            ))}
-          </select>
+      <select
+        className="select-input-compact"
+        value={selectedUTC || ''}
+        onChange={(e) => {
+          const index = utcs.indexOf(e.target.value)
+          handleSelect(e.target.value, index)
+        }}
+        style={{ minWidth: '180px' }}
+      >
+        <option value="">Select UTC...</option>
+        {utcs.map((utc) => (
+          <option key={utc} value={utc}>
+            {utc}
+          </option>
+        ))}
+      </select>
 
-          <button
-            className="btn btn-small"
-            onClick={handleNext}
-            disabled={currentIndex === utcs.length - 1}
-          >
-            {'>>'}
-          </button>
-        </div>
-
-        <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
-          {utcs.length} UTC{utcs.length !== 1 ? 's' : ''} available
-        </p>
-      </div>
+      <button
+        className="btn btn-small"
+        onClick={handleNext}
+        disabled={currentIndex === utcs.length - 1}
+        title="Next UTC"
+      >
+        {'>>'}
+      </button>
     </div>
   )
 }
