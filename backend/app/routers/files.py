@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Cookie
 from fastapi.responses import FileResponse
 from typing import List, Optional
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from config import settings
+from app.services.database import validate_session as db_validate_session
 
 router = APIRouter()
 
@@ -85,12 +86,30 @@ async def get_image(path: str):
 
 
 @router.post("/save-classification")
-async def save_classification(request: SaveClassificationRequest):
+async def save_classification(
+    request: SaveClassificationRequest,
+    session_token: Optional[str] = Cookie(None)
+):
     """
     Save classification results to CSV file
     """
+    # Validate session and get username
+    session = db_validate_session(session_token) if session_token else None
+    if not session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    username = session["username"]
+
     try:
-        save_path = os.path.join(request.base_dir, request.filename)
+        # Get absolute path from server data root
+        base_path = os.path.join(settings.SERVER_DATA_ROOT, request.base_dir)
+
+        # Replace 'user' with actual username in filename
+        filename = request.filename.replace('_user.csv', f'_{username}.csv')
+        save_path = os.path.join(base_path, filename)
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
         # Write classification CSV
         with open(save_path, 'w') as f:
@@ -110,7 +129,8 @@ async def save_classification(request: SaveClassificationRequest):
         return {
             "success": True,
             "path": save_path,
-            "full_path": full_path
+            "full_path": full_path,
+            "filename": filename
         }
 
     except Exception as e:

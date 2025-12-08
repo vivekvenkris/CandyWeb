@@ -8,7 +8,7 @@ import sys
 # Add parent directory to path for config import
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.routers import candidates, files
+from app.routers import candidates, files, auth
 from config import settings
 
 app = FastAPI(
@@ -27,6 +27,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth.router, prefix="/api", tags=["authentication"])
 app.include_router(candidates.router, prefix="/api/candidates", tags=["candidates"])
 app.include_router(files.router, prefix="/api/files", tags=["files"])
 

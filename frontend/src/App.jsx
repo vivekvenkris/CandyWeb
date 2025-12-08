@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import './styles/App.css'
+import Login from './components/Login'
 import DirectorySelector from './components/DirectorySelector'
 import UTCSelector from './components/UTCSelector'
 import FilterDropdown from './components/FilterDropdown'
@@ -11,12 +12,17 @@ import BeamMapCanvas from './components/BeamMapCanvas'
 import Diagnostics from './components/Diagnostics'
 import BulkClassify from './components/BulkClassify'
 import ScatterPlot from './components/ScatterPlot'
-import { filterCandidates, classifyCandidate, saveClassification, getAllCandidates, getMetafile } from './api/client'
+import { loadCandidates, filterCandidates, classifyCandidate, saveClassification, getAllCandidates, getMetafile } from './api/client'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
-import { Map, FileText, Users, Save, ScatterChart } from 'lucide-react'
+import { useAuth } from './hooks/useAuth'
+import { saveAppSession, restoreAppSession, clearAppSession } from './hooks/usePersistedState'
+import { Map, FileText, Users, Save, ScatterChart, LogOut } from 'lucide-react'
 
 function App() {
+  // Authentication state
+  const { user, authenticated, loading: authLoading, login, logout } = useAuth()
   const [baseDir, setBaseDir] = useState('')
+  const [csvPath, setCsvPath] = useState('') // Store CSV path for reloading
   const [utcs, setUtcs] = useState([])
   const [selectedUTC, setSelectedUTC] = useState('')
   const [filteredCandidates, setFilteredCandidates] = useState([])
@@ -53,6 +59,61 @@ function App() {
 
   const currentCandidate = filteredCandidates[currentIndex]
 
+  // Restore session on mount (after authentication)
+  useEffect(() => {
+    if (authenticated) {
+      const session = restoreAppSession()
+      if (session) {
+        console.log('Restoring app session:', session)
+        setBaseDir(session.baseDir || '')
+        setCsvPath(session.csvPath || '')
+        setUtcs(session.utcs || [])
+        setSelectedUTC(session.selectedUTC || '')
+        setFilteredCandidates(session.filteredCandidates || [])
+        setAllCandidatesInUTC(session.allCandidatesInUTC || [])
+        setMetaFile(session.metaFile || null)
+        setCurrentIndex(session.currentIndex || 0)
+        setFilterTypes(session.filterTypes || {
+          UNCAT: true,
+          T1_CAND: false,
+          T2_CAND: false,
+          RFI: false,
+          NOISE: false,
+          KNOWN_PSR: false,
+          NB_PSR: false,
+        })
+        setSortBy(session.sortBy || 'FOLD_SNR')
+        setSortOrder(session.sortOrder || 'desc')
+
+        if (session.baseDir && session.filteredCandidates && session.filteredCandidates.length > 0) {
+          setStatusMessage(`Session restored: ${session.filteredCandidates.length} candidates loaded`)
+        }
+      }
+    }
+  }, [authenticated])
+
+  // Save session whenever important state changes
+  useEffect(() => {
+    if (authenticated && baseDir) {
+      const sessionData = {
+        baseDir,
+        csvPath,
+        utcs,
+        selectedUTC,
+        filteredCandidates,
+        allCandidatesInUTC,
+        metaFile,
+        currentIndex,
+        filterTypes,
+        sortBy,
+        sortOrder,
+        timestamp: new Date().toISOString()
+      }
+      saveAppSession(sessionData)
+    }
+  }, [authenticated, baseDir, csvPath, utcs, selectedUTC, filteredCandidates, allCandidatesInUTC,
+      metaFile, currentIndex, filterTypes, sortBy, sortOrder])
+
   // Reset counts when no candidate is selected
   useEffect(() => {
     if (!currentCandidate) {
@@ -84,6 +145,7 @@ function App() {
   const handleLoadComplete = (data, dir) => {
     console.log('Load complete:', data)
     setBaseDir(dir)
+    setCsvPath(`${dir}/candidates.csv`)
     setUtcs(data.utcs || [])
     setStatusMessage(`Loaded ${data.total_candidates} candidates from ${data.utcs?.length || 0} UTCs`)
   }
@@ -176,6 +238,90 @@ function App() {
       }
     } catch (err) {
       console.error('Error filtering candidates:', err)
+
+      // If backend cache is empty, reload candidates and retry
+      if (err.response?.status === 404 && err.response?.data?.detail === 'Candidates not loaded') {
+        if (csvPath && selectedUTC) {
+          console.log('Backend cache empty, reloading candidates from:', csvPath)
+          setStatusMessage('Reloading candidates...')
+
+          try {
+            // Reload candidates into backend cache
+            const loadResponse = await loadCandidates(csvPath, baseDir)
+            console.log('Candidates reloaded:', loadResponse.data)
+
+            // Preserve existing classifications from session
+            const existingClassifications = {}
+            filteredCandidates.forEach(c => {
+              existingClassifications[c.line_num] = c.candidate_type
+            })
+            allCandidatesInUTC.forEach(c => {
+              if (!existingClassifications[c.line_num]) {
+                existingClassifications[c.line_num] = c.candidate_type
+              }
+            })
+
+            // Reload all candidates for the UTC (needed for scatter plots)
+            const allCandidatesResponse = await getAllCandidates(baseDir)
+            let allCandidates = allCandidatesResponse.data
+            const candidatesInUTC = allCandidates.filter(c => c.utc_start === selectedUTC)
+
+            // Restore classifications for candidates that were previously classified
+            const restoredCandidatesInUTC = candidatesInUTC.map(c => {
+              if (existingClassifications[c.line_num]) {
+                return { ...c, candidate_type: existingClassifications[c.line_num] }
+              }
+              return c
+            })
+            setAllCandidatesInUTC(restoredCandidatesInUTC)
+
+            // Send classifications back to backend
+            for (const [lineNum, candidateType] of Object.entries(existingClassifications)) {
+              try {
+                await classifyCandidate(baseDir, parseInt(lineNum), candidateType)
+              } catch (classifyErr) {
+                console.error(`Failed to restore classification for line ${lineNum}:`, classifyErr)
+              }
+            }
+
+            // Reload metafile
+            try {
+              const metaResponse = await getMetafile(baseDir, selectedUTC)
+              setMetaFile(metaResponse.data)
+            } catch (metaErr) {
+              console.error('Could not load metafile:', metaErr.response?.data || metaErr.message)
+              setMetaFile(null)
+            }
+
+            // Retry filtering
+            const response = await filterCandidates(baseDir, selectedUTC, selectedTypes, sortBy, sortOrder)
+            let filtered = response.data
+
+            // Restore classifications in filtered candidates too
+            filtered = filtered.map(c => {
+              if (existingClassifications[c.line_num]) {
+                return { ...c, candidate_type: existingClassifications[c.line_num] }
+              }
+              return c
+            })
+
+            setFilteredCandidates(filtered)
+            setCurrentIndex(0)
+
+            if (filtered.length > 0) {
+              setStatusMessage(`Found ${filtered.length} candidates (restored ${Object.keys(existingClassifications).length} classifications)`)
+            } else {
+              setStatusMessage('No candidates match your filter criteria')
+            }
+            return
+          } catch (reloadErr) {
+            console.error('Error reloading candidates:', reloadErr)
+            setStatusMessage('Error reloading candidates: ' + (reloadErr.response?.data?.detail || reloadErr.message))
+            return
+          }
+        }
+      }
+
       setStatusMessage('Error filtering candidates: ' + (err.response?.data?.detail || err.message))
     } finally {
       setLoading(false)
@@ -256,6 +402,28 @@ function App() {
     }
   }
 
+  // Show loading screen while checking authentication
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: 'white',
+        fontSize: '1.2rem'
+      }}>
+        Checking authentication...
+      </div>
+    )
+  }
+
+  // Show login page if not authenticated
+  if (!authenticated) {
+    return <Login onLoginSuccess={login} />
+  }
+
   return (
     <div className="app">
       {/* Compact Toolbar with Logo */}
@@ -320,6 +488,26 @@ function App() {
 
         <div className="toolbar-logo">
           <span className="logo-text">CandyWeb</span>
+          <div style={{ marginLeft: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+              {user?.name || user?.username}
+            </span>
+            <button
+              onClick={logout}
+              className="btn"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 0.75rem',
+                fontSize: '0.85rem'
+              }}
+              title="Logout"
+            >
+              <LogOut size={16} />
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 

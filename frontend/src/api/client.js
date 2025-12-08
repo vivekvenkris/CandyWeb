@@ -7,6 +7,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,  // Enable cookies for session management
 })
 
 // Response interceptor for error handling
@@ -17,6 +18,24 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+// ============= Authentication Endpoints =============
+
+export const login = (username, password) => {
+  return api.post('/auth/login', { username, password })
+}
+
+export const logout = () => {
+  return api.post('/auth/logout')
+}
+
+export const checkSession = () => {
+  return api.get('/auth/session')
+}
+
+export const register = (username, password) => {
+  return api.post('/auth/register', { username, password })
+}
 
 // ============= Config Endpoints =============
 
