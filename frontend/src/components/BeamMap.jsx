@@ -43,7 +43,7 @@ const BeamMap = memo(function BeamMap({ candidate, metaFile, beams = [] }) {
           name: beam.name,
           line: {
             color: isCurrentBeam ? '#ff6347' : isNeighbor ? '#4682b4' : '#9ca3af',
-            width: isCurrentBeam ? 3 : isNeighbor ? 2 : 1
+            width: isCurrentBeam ? 3 : isNeighbor ? 2 : 10
           },
           fill: isCurrentBeam ? 'toself' : 'none',
           fillcolor: isCurrentBeam ? 'rgba(255, 99, 71, 0.2)' : undefined,
@@ -103,7 +103,7 @@ const BeamMap = memo(function BeamMap({ candidate, metaFile, beams = [] }) {
         y: [metaFile.boresight.dec],
         mode: 'markers+text',
         type: 'scatter',
-        text: ['Boresight'],
+        text: [''],
         textposition: 'bottom center',
         marker: {
           size: 10,

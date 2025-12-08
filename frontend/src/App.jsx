@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import './styles/App.css'
-import Login from './components/Login'
+import AuthContainer from './components/AuthContainer'
 import DirectorySelector from './components/DirectorySelector'
 import UTCSelector from './components/UTCSelector'
 import FilterDropdown from './components/FilterDropdown'
@@ -380,12 +380,16 @@ function App() {
     try {
       setStatusMessage('Saving classifications...')
 
-      const username = 'user' // Get from state/config
+      const username = user?.username || 'user'
       const dirname = baseDir.split('/').pop()
       const filename = `${dirname}_${username}.csv`
 
-      // Get all candidates with their classifications
-      const allCandidates = filteredCandidates.map(c => ({
+      // Get ALL candidates from ALL UTCs (not just filtered ones)
+      const allCandidatesResponse = await getAllCandidates(baseDir)
+      const allCandidatesData = allCandidatesResponse.data
+
+      // Map to the format expected by the backend
+      const allCandidates = allCandidatesData.map(c => ({
         beam_id: c.beam_id,
         utc: c.utc_start,
         png_path: c.png_path,
@@ -393,9 +397,29 @@ function App() {
         csv_line: c.csv_line
       }))
 
+      // Save to backend
       await saveClassification(baseDir, filename, allCandidates, 'csv_header')
 
-      setStatusMessage(`✓ Saved classifications to ${filename}`)
+      // Create CSV content for download
+      const csvHeader = 'beam_id,utc,png_path,classification,csv_line\n'
+      const csvRows = allCandidates.map(c =>
+        `${c.beam_id},${c.utc},${c.png_path},${c.classification},${c.csv_line}`
+      ).join('\n')
+      const csvContent = csvHeader + csvRows
+
+      // Trigger download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement('a')
+      const url = URL.createObjectURL(blob)
+      link.setAttribute('href', url)
+      link.setAttribute('download', filename)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      setStatusMessage(`✓ Saved ${allCandidates.length} classifications to ${filename} (server + downloaded)`)
     } catch (err) {
       console.error('Error saving:', err)
       setStatusMessage('Error saving: ' + (err.response?.data?.detail || err.message))
@@ -419,9 +443,9 @@ function App() {
     )
   }
 
-  // Show login page if not authenticated
+  // Show login/register page if not authenticated
   if (!authenticated) {
-    return <Login onLoginSuccess={login} />
+    return <AuthContainer onLoginSuccess={login} />
   }
 
   return (
@@ -763,8 +787,8 @@ function App() {
                     containerHeight="100%"
                     panels={[
                       {
-                        id: 'beammap-bulkclassify',
-                        title: 'Beam Map & Bulk Classify',
+                        id: 'beammap-diagnostics',
+                        title: 'Beam Map & Diagnostics',
                         defaultOpen: true,
                         defaultHeight: 400,
                         onPopOut: null,
@@ -803,49 +827,40 @@ function App() {
                               </div>
                             </div>
 
-                            {/* BulkClassify - Right half */}
-                            {currentCandidate && (
-                              <div style={{ flex: 1, background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                                <div style={{
-                                  padding: '0.75rem 1rem',
-                                  borderBottom: '1px solid #e5e7eb',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  background: '#f9fafb'
-                                }}>
-                                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>
-                                    Bulk Classify ({bulkClassifyCounts.unclassified} uncat, {bulkClassifyCounts.classified} cat)
-                                  </h3>
-                                  {bulkClassifyMode === 'docked' && (
-                                    <button
-                                      onClick={() => setBulkClassifyMode('floating')}
-                                      style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        color: '#667eea',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        padding: '0.25rem 0.5rem'
-                                      }}
-                                      title="Pop out to floating panel"
-                                    >
-                                      ↗
-                                    </button>
-                                  )}
-                                </div>
-                                <div style={{ flex: 1, overflow: 'auto' }}>
-                                  {bulkClassifyMode === 'docked' && (
-                                    <BulkClassify
-                                      candidate={currentCandidate}
-                                      baseDir={baseDir}
-                                      onClassified={handleBulkClassified}
-                                      onCountsUpdate={setBulkClassifyCounts}
-                                    />
-                                  )}
-                                </div>
+                            {/* Diagnostics - Right half */}
+                            <div style={{ flex: 1, background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                              <div style={{
+                                padding: '0.75rem 1rem',
+                                borderBottom: '1px solid #e5e7eb',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                background: '#f9fafb'
+                              }}>
+                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Diagnostics</h3>
+                                {diagnosticsMode === 'docked' && (
+                                  <button
+                                    onClick={() => setDiagnosticsMode('floating')}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#667eea',
+                                      cursor: 'pointer',
+                                      fontSize: '0.85rem',
+                                      padding: '0.25rem 0.5rem'
+                                    }}
+                                    title="Pop out to floating panel"
+                                  >
+                                    ↗
+                                  </button>
+                                )}
                               </div>
-                            )}
+                              <div style={{ flex: 1, overflow: 'auto' }}>
+                                {diagnosticsMode === 'docked' && (
+                                  <Diagnostics candidate={currentCandidate} baseDir={baseDir} />
+                                )}
+                              </div>
+                            </div>
                           </div>
                         )
                       },
@@ -864,13 +879,18 @@ function App() {
                         ) : null
                       },
                       {
-                        id: 'diagnostics',
-                        title: 'Diagnostics',
+                        id: 'bulkclassify',
+                        title: `Bulk Classify (${bulkClassifyCounts.unclassified} uncat, ${bulkClassifyCounts.classified} cat)`,
                         defaultOpen: false,
                         defaultHeight: 400,
-                        onPopOut: diagnosticsMode === 'docked' ? () => setDiagnosticsMode('floating') : null,
-                        content: diagnosticsMode === 'docked' ? (
-                          <Diagnostics candidate={currentCandidate} baseDir={baseDir} />
+                        onPopOut: bulkClassifyMode === 'docked' ? () => setBulkClassifyMode('floating') : null,
+                        content: bulkClassifyMode === 'docked' && currentCandidate ? (
+                          <BulkClassify
+                            candidate={currentCandidate}
+                            baseDir={baseDir}
+                            onClassified={handleBulkClassified}
+                            onCountsUpdate={setBulkClassifyCounts}
+                          />
                         ) : null
                       }
                     ]}

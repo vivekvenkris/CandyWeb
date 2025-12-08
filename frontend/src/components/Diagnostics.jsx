@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { searchPulsarScraper, searchPsrcat } from '../api/client'
 
 export default function Diagnostics({ candidate, baseDir }) {
+  // All hooks must be called unconditionally at the top
   const [copiedCommand, setCopiedCommand] = useState(null)
   const [showPulsarPopup, setShowPulsarPopup] = useState(false)
   const [pulsarScraperResults, setPulsarScraperResults] = useState(null)
@@ -13,14 +14,6 @@ export default function Diagnostics({ candidate, baseDir }) {
   const [psrcatResults, setPsrcatResults] = useState(null)
   const [loadingPsrcat, setLoadingPsrcat] = useState(false)
   const [psrcatError, setPsrcatError] = useState(null)
-
-  if (!candidate) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
-        <p>Select a candidate to view diagnostics</p>
-      </div>
-    )
-  }
 
   const copyToClipboard = (text, commandName) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -51,6 +44,15 @@ export default function Diagnostics({ candidate, baseDir }) {
         })
     }
   }, [candidate, baseDir])
+
+  // Early return after all hooks are called
+  if (!candidate) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+        <p>Select a candidate to view diagnostics</p>
+      </div>
+    )
+  }
 
   // Handler for external pulsar scraper search (popup)
   const handleSearchPulsarScraper = async () => {

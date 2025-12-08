@@ -144,9 +144,6 @@ const BeamMapCanvas = memo(function BeamMapCanvas({ candidate, metaFile }) {
         const isHovered = hoveredBeam === beam.name
 
         // Draw ellipse
-        const centerX = toCanvasX(raDeg)
-        const centerY = toCanvasY(beam.dec)
-
         if (beam.ellipse_x && beam.ellipse_y && beam.ellipse_angle !== null) {
           // Generate ellipse points
           const numPoints = 50
@@ -203,17 +200,7 @@ const BeamMapCanvas = memo(function BeamMapCanvas({ candidate, metaFile }) {
           ctx.stroke()
         }
 
-        // Draw beam center marker
-        ctx.beginPath()
-        ctx.arc(centerX, centerY, isHovered ? 6 : 4, 0, 2 * Math.PI)
-        if (isCurrentBeam) {
-          ctx.fillStyle = '#ff6347'
-        } else if (isNeighbor) {
-          ctx.fillStyle = '#4682b4'
-        } else {
-          ctx.fillStyle = '#9ca3af'
-        }
-        ctx.fill()
+        // Center markers removed as requested
 
         // Beam labels are shown as tooltips on hover instead of being drawn on canvas
       })
@@ -462,11 +449,21 @@ const BeamMapCanvas = memo(function BeamMapCanvas({ candidate, metaFile }) {
         alignItems: 'center'
       }}>
         <div>
-          <span style={{ color: '#ff6347', fontWeight: '600' }}>■</span> Current beam
-          {' | '}
-          <span style={{ color: '#4682b4', fontWeight: '600' }}>■</span> Neighbor beams
-          {' | '}
-          <span style={{ color: '#9ca3af', fontWeight: '600' }}>■</span> Other beams
+          {candidate ? (
+            <>
+              <span style={{ color: '#ff6347', fontWeight: '600' }}>Current Beam: {candidate.beam_name}</span>
+              {' | '}
+              <span style={{ color: '#4682b4', fontWeight: '600' }}>■</span> Neighbor beams
+              {' | '}
+              <span style={{ color: '#9ca3af', fontWeight: '600' }}>■</span> Other beams
+            </>
+          ) : (
+            <>
+              <span style={{ color: '#9ca3af', fontWeight: '600' }}>Current Beam: None</span>
+              {' | '}
+              <span style={{ color: '#9ca3af', fontWeight: '600' }}>■</span> All beams
+            </>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
@@ -488,22 +485,6 @@ const BeamMapCanvas = memo(function BeamMapCanvas({ candidate, metaFile }) {
             Reset View
           </button>
         </div>
-      </div>
-
-      {/* Title */}
-      <div style={{
-        position: 'absolute',
-        top: '10px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        fontSize: '14px',
-        fontWeight: '600',
-        color: '#374151',
-        background: 'rgba(255, 255, 255, 0.9)',
-        padding: '4px 12px',
-        borderRadius: '4px'
-      }}>
-        {candidate ? `Beam Tiling - Current: ${candidate.beam_name}` : 'Beam Tiling (No candidate selected)'}
       </div>
 
       {/* Controls hint */}

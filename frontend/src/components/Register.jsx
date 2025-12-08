@@ -1,33 +1,45 @@
 import { useState } from 'react'
-import { login as apiLogin } from '../api/client'
+import { register as apiRegister } from '../api/client'
 
-function Login({ onLoginSuccess, onSwitchToRegister }) {
+function Register({ onRegisterSuccess, onBackToLogin }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    // Validation
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters')
+      return
+    }
+
+    if (password.length < 4) {
+      setError('Password must be at least 4 characters')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
     setLoading(true)
 
     try {
-      const response = await apiLogin(username, password)
-      const { success, username: loggedInUser, name, session_token } = response.data
+      const response = await apiRegister(username, password)
 
-      if (success) {
-        // Store session token in localStorage for persistence across page refreshes
-        localStorage.setItem('session_token', session_token)
-        localStorage.setItem('username', loggedInUser)
-        localStorage.setItem('name', name)
-
-        // Call the success callback
-        onLoginSuccess({ username: loggedInUser, name })
+      if (response.data.success) {
+        // Registration successful, notify parent
+        onRegisterSuccess(username)
       }
     } catch (err) {
-      console.error('Login error:', err)
-      setError(err.response?.data?.detail || 'Login failed. Please try again.')
+      console.error('Registration error:', err)
+      setError(err.response?.data?.detail || 'Registration failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -57,13 +69,13 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
             color: '#1f2937',
             marginBottom: '0.5rem'
           }}>
-            CandyWeb
+            Create Account
           </h1>
           <p style={{
             color: '#6b7280',
             fontSize: '0.95rem'
           }}>
-            Pulsar Candidate Viewer
+            Register for CandyWeb
           </p>
         </div>
 
@@ -84,6 +96,7 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
               onChange={(e) => setUsername(e.target.value)}
               required
               autoFocus
+              placeholder="At least 3 characters"
               style={{
                 width: '100%',
                 padding: '0.75rem 1rem',
@@ -114,6 +127,38 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              placeholder="At least 4 characters"
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                fontSize: '1rem',
+                border: '2px solid #e5e7eb',
+                borderRadius: '8px',
+                outline: 'none',
+                transition: 'border-color 0.2s',
+                boxSizing: 'border-box'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#667eea'}
+              onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+            />
+          </div>
+
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{
+              display: 'block',
+              marginBottom: '0.5rem',
+              fontSize: '0.9rem',
+              fontWeight: '600',
+              color: '#374151'
+            }}>
+              Confirm Password
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              placeholder="Re-enter password"
               style={{
                 width: '100%',
                 padding: '0.75rem 1rem',
@@ -170,7 +215,7 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
               e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)'
             }}
           >
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? 'Creating Account...' : 'Register'}
           </button>
         </form>
 
@@ -179,7 +224,7 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
           textAlign: 'center'
         }}>
           <button
-            onClick={onSwitchToRegister}
+            onClick={onBackToLogin}
             style={{
               background: 'none',
               border: 'none',
@@ -189,7 +234,7 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
               textDecoration: 'underline'
             }}
           >
-            Need an account? Register
+            Already have an account? Login
           </button>
         </div>
       </div>
@@ -197,4 +242,4 @@ function Login({ onLoginSuccess, onSwitchToRegister }) {
   )
 }
 
-export default Login
+export default Register
