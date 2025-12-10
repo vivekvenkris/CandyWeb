@@ -4,6 +4,8 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from pathlib import Path
 import re
+from astropy.coordinates import Angle
+from astropy import units as u
 
 from app.models.candidate import Candidate, CandidateType
 
@@ -37,32 +39,30 @@ class CandidateFileReader:
     ]
 
     @staticmethod
-    def parse_hms_to_hours(hms_str: str) -> float:
-        """Parse HH:MM:SS.SSS to decimal hours"""
+    def parse_ra_angle(hms_str: str) -> Optional[Angle]:
+        """Parse HH:MM:SS.SSS or decimal hours into an Angle."""
+        if not hms_str:
+            return None
         try:
-            parts = hms_str.strip().split(':')
-            if len(parts) == 3:
-                h, m, s = map(float, parts)
-                return h + m/60.0 + s/3600.0
-            return float(hms_str)
-        except:
-            return 0.0
+            if ':' in hms_str:
+                return Angle(hms_str, unit=u.hourangle)
+            return Angle(float(hms_str), unit=u.hourangle)
+        except Exception as e:
+            print(f"Error parsing RA '{hms_str}': {e}")
+            return None
 
     @staticmethod
-    def parse_dms_to_degrees(dms_str: str) -> float:
-        """Parse DD:MM:SS.SSS to decimal degrees"""
+    def parse_degree_angle(angle_str: str) -> Optional[Angle]:
+        """Parse DD:MM:SS.SSS or decimal degrees into an Angle."""
+        if not angle_str:
+            return None
         try:
-            # Handle negative declinations
-            sign = 1 if not dms_str.strip().startswith('-') else -1
-            dms_str = dms_str.strip().lstrip('+-')
-
-            parts = dms_str.split(':')
-            if len(parts) == 3:
-                d, m, s = map(float, parts)
-                return sign * (abs(d) + m/60.0 + s/3600.0)
-            return sign * float(dms_str)
-        except:
-            return 0.0
+            if ':' in angle_str:
+                return Angle(angle_str, unit=u.degree)
+            return Angle(float(angle_str), unit=u.degree)
+        except Exception as e:
+            print(f"Error parsing degree angle '{angle_str}': {e}")
+            return None
 
     @staticmethod
     async def read_candidate_file(
@@ -147,11 +147,11 @@ class CandidateFileReader:
                                 elif col in ["beam_name", "source_name"]:
                                     setattr(candidate, col, value)
                                 elif col == "ra":
-                                    candidate.ra = CandidateFileReader.parse_hms_to_hours(value)
+                                    candidate.ra = CandidateFileReader.parse_ra_angle(value)
                                 elif col == "dec":
-                                    candidate.dec = CandidateFileReader.parse_dms_to_degrees(value)
+                                    candidate.dec = CandidateFileReader.parse_degree_angle(value)
                                 elif col in ["gl", "gb"]:
-                                    setattr(candidate, col, float(value) if value else None)
+                                    setattr(candidate, col, CandidateFileReader.parse_degree_angle(value))
                                 elif col == "mjd_start":
                                     candidate.mjd_start = float(value) if value else None
                                 elif col == "utc_start":

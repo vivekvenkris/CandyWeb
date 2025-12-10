@@ -77,7 +77,7 @@ async def logout(
     session_token: Optional[str] = Cookie(None)
 ):
     """
-    Logout user by invalidating their session.
+    Logout user by invalidating their session and clearing all cached data.
     """
     if session_token:
         db_delete_session(session_token)
@@ -87,6 +87,14 @@ async def logout(
 
     # Clean up expired sessions
     cleanup_expired_sessions()
+
+    # Clear all in-memory caches
+    from app.routers import candidates
+    candidates._candidates_cache.clear()
+    candidates._candidates_by_utc_cache.clear()
+    candidates._csv_header_cache.clear()
+    candidates._psrcat_shortlist_cache.clear()
+    # Note: We keep _psrcat_parser cached as it's expensive to reload and doesn't contain user data
 
     return {"success": True, "message": "Logged out successfully"}
 

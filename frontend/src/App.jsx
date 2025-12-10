@@ -59,7 +59,7 @@ function App() {
 
   const currentCandidate = filteredCandidates[currentIndex]
 
-  // Restore session on mount (after authentication)
+  // Restore session on mount (after authentication) or clear on logout
   useEffect(() => {
     if (authenticated) {
       const session = restoreAppSession()
@@ -89,6 +89,29 @@ function App() {
           setStatusMessage(`Session restored: ${session.filteredCandidates.length} candidates loaded`)
         }
       }
+    } else {
+      // Clear all state when logged out
+      console.log('Clearing app state on logout')
+      setBaseDir('')
+      setCsvPath('')
+      setUtcs([])
+      setSelectedUTC('')
+      setFilteredCandidates([])
+      setAllCandidatesInUTC([])
+      setMetaFile(null)
+      setCurrentIndex(0)
+      setFilterTypes({
+        UNCAT: true,
+        T1_CAND: false,
+        T2_CAND: false,
+        RFI: false,
+        NOISE: false,
+        KNOWN_PSR: false,
+        NB_PSR: false,
+      })
+      setSortBy('FOLD_SNR')
+      setSortOrder('desc')
+      setStatusMessage('Ready. Select a directory to begin.')
     }
   }, [authenticated])
 

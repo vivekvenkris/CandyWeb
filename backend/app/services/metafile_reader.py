@@ -11,24 +11,29 @@ from config import settings
 # Helper functions for neighbor calculation (module-level for multiprocessing)
 import math
 import numpy as np
+from astropy.coordinates import Angle
+from astropy import units as u
 
 
-def _position_within_beam(beam: Beam, ra: float, dec: float) -> bool:
-    """Check if a point (ra, dec) in hours/degrees is within a beam ellipse"""
-    if not all([beam.ellipse_x, beam.ellipse_y, beam.ellipse_angle is not None]):
-        # Fallback: simple distance check
-        ra_deg = ra * 15.0
-        dec_deg = dec
-        beam_ra_deg = beam.ra * 15.0
-        beam_dec_deg = beam.dec
+def _position_within_beam(beam: Beam, ra: Angle, dec: Angle) -> bool:
+    """Check if a point (ra, dec) is within a beam ellipse."""
+    if beam.ra is None or beam.dec is None or ra is None or dec is None:
+        return False
+
+    if not (beam.ellipse_x and beam.ellipse_y and beam.ellipse_angle is not None):
+        # Fallback: simple distance check in degrees
+        ra_deg = ra.to_value(u.degree)
+        dec_deg = dec.to_value(u.degree)
+        beam_ra_deg = beam.ra.to_value(u.degree)
+        beam_dec_deg = beam.dec.to_value(u.degree)
         distance = math.sqrt((ra_deg - beam_ra_deg)**2 + (dec_deg - beam_dec_deg)**2)
         return distance < 0.1
 
-    # Convert RA from hours to degrees
-    x = ra * 15.0
-    y = dec
-    x0 = beam.ra * 15.0
-    y0 = beam.dec
+    # Convert to degrees for ellipse math
+    x = ra.to_value(u.degree)
+    y = dec.to_value(u.degree)
+    x0 = beam.ra.to_value(u.degree)
+    y0 = beam.dec.to_value(u.degree)
     a = beam.ellipse_x
     b = beam.ellipse_y
     theta = -beam.ellipse_angle
@@ -60,6 +65,9 @@ def _ellipse_parametric(t_values, a, b, x0, y0, theta):
 
 def _discrete_overlap(b1: Beam, b2: Beam, num_points: int = 100) -> bool:
     """Check if two beam ellipses overlap using discrete point sampling"""
+    if b1.ra is None or b1.dec is None or b2.ra is None or b2.dec is None:
+        return False
+
     # First check if centers are contained
     if _check_containment(b1, b2):
         return True
@@ -73,9 +81,9 @@ def _discrete_overlap(b1: Beam, b2: Beam, num_points: int = 100) -> bool:
     # Generate points on the perimeter of beam1
     t_values = np.linspace(0, 2 * np.pi, num_points)
 
-    # Convert RA from hours to degrees for calculations
-    b1_ra_deg = b1.ra * 15.0
-    b1_dec_deg = b1.dec
+    # Convert RA/DEC to degrees for calculations
+    b1_ra_deg = b1.ra.to_value(u.degree)
+    b1_dec_deg = b1.dec.to_value(u.degree)
 
     x1, y1 = _ellipse_parametric(
         t_values,
@@ -88,8 +96,7 @@ def _discrete_overlap(b1: Beam, b2: Beam, num_points: int = 100) -> bool:
 
     # Check if any points on the perimeter of b1 lie inside b2
     for x, y in zip(x1, y1):
-        ra_hours = x / 15.0
-        if _position_within_beam(b2, ra_hours, y):
+        if _position_within_beam(b2, Angle(x, unit=u.degree), Angle(y, unit=u.degree)):
             return True
 
     return False
@@ -117,27 +124,28 @@ class MetaFileReader:
     """
 
     @staticmethod
-    def parse_angle(angle_str: str, format: str) -> float:
+    def parse_angle(angle_str: str, format: str) -> Optional[Angle]:
         """
-        Parse angle string to decimal value
+        Parse angle string to an Angle
 
         Args:
             angle_str: Angle string (e.g., "12:34:56.78")
             format: "HMS" for hours or "DMS" for degrees
 
         Returns:
-            Decimal hours (for HMS) or decimal degrees (for DMS)
+            Angle in the requested unit, or None if parsing fails
         """
+        if not angle_str:
+            return None
+
         try:
-            parts = angle_str.strip().split(':')
-            if len(parts) == 3:
-                h, m, s = map(float, parts)
-                sign = 1 if not angle_str.strip().startswith('-') else -1
-                value = sign * (abs(h) + m/60.0 + s/3600.0)
-                return value
-            return float(angle_str)
+            angle_str = angle_str.strip()
+            unit = u.hourangle if format.upper() == 'HMS' else u.degree
+            if ':' in angle_str:
+                return Angle(angle_str, unit=unit)
+            return Angle(float(angle_str), unit=unit)
         except:
-            return 0.0
+            return None
 
     @staticmethod
     async def parse_file(metafile_path: str) -> MetaFile:
@@ -274,13 +282,15 @@ class MetaFileReader:
 
         # Calculate RA/DEC bounds
         if metafile.beams:
-            ras = [b.ra for b in metafile.beams.values()]
-            decs = [b.dec for b in metafile.beams.values()]
+            ras = [b.ra for b in metafile.beams.values() if b.ra is not None]
+            decs = [b.dec for b in metafile.beams.values() if b.dec is not None]
 
-            metafile.min_ra = min(ras)
-            metafile.max_ra = max(ras)
-            metafile.min_dec = min(decs)
-            metafile.max_dec = max(decs)
+            if ras:
+                metafile.min_ra = min(ras, key=lambda angle: angle.to_value(u.degree))
+                metafile.max_ra = max(ras, key=lambda angle: angle.to_value(u.degree))
+            if decs:
+                metafile.min_dec = min(decs, key=lambda angle: angle.to_value(u.degree))
+                metafile.max_dec = max(decs, key=lambda angle: angle.to_value(u.degree))
 
         # Find neighbors for all beams (if enabled in config)
         if settings.CALCULATE_NEIGHBORS:

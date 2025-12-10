@@ -1,7 +1,36 @@
-from typing import Optional, Dict, List
-from pydantic import BaseModel
+from typing import Optional, Dict, List, Any
+from pydantic import BaseModel, ConfigDict, field_serializer, field_validator, PrivateAttr
 from datetime import datetime
 from enum import Enum
+from astropy.coordinates import Angle, SkyCoord
+from astropy import units as u
+
+
+def _coerce_angle(value: Any, unit: u.UnitBase) -> Optional[Angle]:
+    """Convert raw values into Angle instances with the requested unit."""
+    if value is None:
+        return None
+
+    if isinstance(value, Angle):
+        return value
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        value = stripped
+
+    try:
+        return Angle(value, unit=unit)
+    except Exception:
+        return None
+
+
+def _serialize_angle(value: Optional[Angle], unit: u.UnitBase) -> Optional[float]:
+    """Serialize Angle values as primitive floats for API responses."""
+    if value is None:
+        return None
+    return value.to_value(unit)
 
 
 class CandidateType(str, Enum):
@@ -15,34 +44,13 @@ class CandidateType(str, Enum):
     NB_PSR = "NB_PSR"
 
 
-class Angle(BaseModel):
-    """Represents an astronomical angle"""
-    value: float
-    format: str  # "HMS", "DMS", "DEG", "RAD"
-
-    def to_decimal_hours(self) -> float:
-        """Convert to decimal hours for RA"""
-        if self.format == "HMS":
-            return self.value
-        elif self.format == "DEG":
-            return self.value / 15.0
-        elif self.format == "RAD":
-            return self.value * 12.0 / 3.14159265359
-        return self.value
-
-    def to_degrees(self) -> float:
-        """Convert to degrees for DEC"""
-        if self.format == "DMS" or self.format == "DEG":
-            return self.value
-        elif self.format == "RAD":
-            return self.value * 180.0 / 3.14159265359
-        elif self.format == "HMS":
-            return self.value * 15.0
-        return self.value
-
-
 class Candidate(BaseModel):
     """Pulsar candidate model matching JavaFX application"""
+    model_config = ConfigDict(
+        use_enum_values=True,
+        arbitrary_types_allowed=True,
+        validate_assignment=True
+    )
 
     # Identification
     pointing_id: Optional[int] = None
@@ -52,10 +60,13 @@ class Candidate(BaseModel):
     line_num: Optional[int] = None
 
     # Coordinates
-    ra: Optional[float] = None  # Stored as decimal hours
-    dec: Optional[float] = None  # Stored as degrees
-    gl: Optional[float] = None  # Galactic longitude (degrees)
-    gb: Optional[float] = None  # Galactic latitude (degrees)
+    ra: Optional[Angle] = None  # Stored as Angle (hourangle)
+    dec: Optional[Angle] = None  # Stored as Angle (degrees)
+    gl: Optional[Angle] = None  # Galactic longitude (degrees)
+    gb: Optional[Angle] = None  # Galactic latitude (degrees)
+
+    # Private cached coordinate
+    _coord: Optional[SkyCoord] = PrivateAttr(default=None)
 
     # Time
     mjd_start: Optional[float] = None
@@ -108,8 +119,32 @@ class Candidate(BaseModel):
     visible: bool = True
     csv_line: Optional[str] = None
 
-    class Config:
-        use_enum_values = True
+    @field_validator("ra", mode="before")
+    @classmethod
+    def _validate_ra(cls, value: Any) -> Optional[Angle]:
+        return _coerce_angle(value, u.hourangle)
+
+    @field_validator("dec", "gl", "gb", mode="before")
+    @classmethod
+    def _validate_degree_angles(cls, value: Any) -> Optional[Angle]:
+        return _coerce_angle(value, u.degree)
+
+    @field_serializer("ra")
+    @classmethod
+    def _serialize_ra(cls, value: Optional[Angle]) -> Optional[float]:
+        return _serialize_angle(value, u.hourangle)
+
+    @field_serializer("dec", "gl", "gb")
+    @classmethod
+    def _serialize_degree_angles(cls, value: Optional[Angle]) -> Optional[float]:
+        return _serialize_angle(value, u.degree)
+
+    @property
+    def coord(self) -> Optional[SkyCoord]:
+        """Get cached SkyCoord, computing it if needed"""
+        if self._coord is None and self.ra is not None and self.dec is not None:
+            self._coord = SkyCoord(ra=self.ra, dec=self.dec, frame='icrs')
+        return self._coord
 
     @property
     def opt_p0(self) -> Optional[float]:
@@ -153,14 +188,36 @@ class Candidate(BaseModel):
 
 class Beam(BaseModel):
     """Beam information"""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str
-    ra: float  # decimal hours
-    dec: float  # degrees
+    ra: Optional[Angle] = None  # hourangle
+    dec: Optional[Angle] = None  # degrees
     radius: Optional[float] = None  # degrees
     ellipse_x: Optional[float] = None  # semi-major axis (radians)
     ellipse_y: Optional[float] = None  # semi-minor axis (radians)
     ellipse_angle: Optional[float] = None  # rotation angle (radians)
     neighbour_beams: List[str] = []
+
+    @field_validator("ra", mode="before")
+    @classmethod
+    def _validate_ra(cls, value: Any) -> Optional[Angle]:
+        return _coerce_angle(value, u.hourangle)
+
+    @field_validator("dec", mode="before")
+    @classmethod
+    def _validate_dec(cls, value: Any) -> Optional[Angle]:
+        return _coerce_angle(value, u.degree)
+
+    @field_serializer("ra")
+    @classmethod
+    def _serialize_ra(cls, value: Optional[Angle]) -> Optional[float]:
+        return _serialize_angle(value, u.hourangle)
+
+    @field_serializer("dec")
+    @classmethod
+    def _serialize_dec(cls, value: Optional[Angle]) -> Optional[float]:
+        return _serialize_angle(value, u.degree)
 
     @property
     def integer_beam_name(self) -> Optional[int]:
@@ -174,6 +231,8 @@ class Beam(BaseModel):
 
 class MetaFile(BaseModel):
     """Metadata file information"""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     file_name: Optional[str] = None
     bandwidth: Optional[float] = None
     beams: Dict[str, Beam] = {}
@@ -187,25 +246,77 @@ class MetaFile(BaseModel):
     tsamp_incoherent: Optional[float] = None
     num_chans_incoherent: Optional[int] = None
     centre_freq: Optional[float] = None
-    min_ra: Optional[float] = None  # decimal hours
-    max_ra: Optional[float] = None
-    min_dec: Optional[float] = None  # degrees
-    max_dec: Optional[float] = None
+    min_ra: Optional[Angle] = None  # Angle (hourangle)
+    max_ra: Optional[Angle] = None
+    min_dec: Optional[Angle] = None  # degrees
+    max_dec: Optional[Angle] = None
     png_path: Optional[str] = None
     stale: bool = False
+
+    @field_validator("min_ra", "max_ra", mode="before")
+    @classmethod
+    def _validate_ra_bounds(cls, value: Any) -> Optional[Angle]:
+        return _coerce_angle(value, u.hourangle)
+
+    @field_validator("min_dec", "max_dec", mode="before")
+    @classmethod
+    def _validate_dec_bounds(cls, value: Any) -> Optional[Angle]:
+        return _coerce_angle(value, u.degree)
+
+    @field_serializer("min_ra", "max_ra")
+    @classmethod
+    def _serialize_ra_bounds(cls, value: Optional[Angle]) -> Optional[float]:
+        return _serialize_angle(value, u.hourangle)
+
+    @field_serializer("min_dec", "max_dec")
+    @classmethod
+    def _serialize_dec_bounds(cls, value: Optional[Angle]) -> Optional[float]:
+        return _serialize_angle(value, u.degree)
 
 
 class Pulsar(BaseModel):
     """Known pulsar from PSRCAT"""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str
-    ra: Optional[float] = None  # decimal hours
-    dec: Optional[float] = None  # degrees
+    ra: Optional[Angle] = None  # hourangle
+    dec: Optional[Angle] = None  # degrees
     dm: Optional[float] = None
     p0: Optional[float] = None  # period (seconds)
     f0: Optional[float] = None  # frequency (Hz)
     f1: Optional[float] = None
     pepoch: Optional[float] = None
     ephemeris: Optional[str] = None
+
+    # Private cached coordinate
+    _coord: Optional[SkyCoord] = PrivateAttr(default=None)
+
+    @field_validator("ra", mode="before")
+    @classmethod
+    def _validate_ra(cls, value: Any) -> Optional[Angle]:
+        return _coerce_angle(value, u.hourangle)
+
+    @field_validator("dec", mode="before")
+    @classmethod
+    def _validate_dec(cls, value: Any) -> Optional[Angle]:
+        return _coerce_angle(value, u.degree)
+
+    @field_serializer("ra")
+    @classmethod
+    def _serialize_ra(cls, value: Optional[Angle]) -> Optional[float]:
+        return _serialize_angle(value, u.hourangle)
+
+    @field_serializer("dec")
+    @classmethod
+    def _serialize_dec(cls, value: Optional[Angle]) -> Optional[float]:
+        return _serialize_angle(value, u.degree)
+
+    @property
+    def coord(self) -> Optional[SkyCoord]:
+        """Get cached SkyCoord, computing it if needed"""
+        if self._coord is None and self.ra is not None and self.dec is not None:
+            self._coord = SkyCoord(ra=self.ra, dec=self.dec, frame='icrs')
+        return self._coord
 
     @property
     def frequency(self) -> Optional[float]:

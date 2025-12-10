@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional, Dict
 from pydantic import BaseModel
 import httpx
+from astropy.coordinates import SkyCoord
 
 from app.models.candidate import Candidate, CandidateType
 from app.services.candidate_reader import CandidateFileReader
@@ -15,6 +16,12 @@ router = APIRouter()
 _candidates_cache: Dict[str, List[Candidate]] = {}
 _candidates_by_utc_cache: Dict[str, Dict[str, List[Candidate]]] = {}
 _csv_header_cache: Dict[str, str] = {}
+
+# Cached PSRCAT parser instance (singleton to avoid re-parsing the DB on every request)
+_psrcat_parser: Optional[PSRCATParser] = None
+
+# Cached PSRCAT shortlist per base_dir (only pulsars within observation's sky coverage)
+_psrcat_shortlist_cache: Dict[str, List[Dict]] = {}
 
 
 class LoadCandidatesRequest(BaseModel):
@@ -287,6 +294,29 @@ async def get_metafile(base_dir: str, utc: Optional[str] = Query(None)):
 
     try:
         metafile = await MetaFileReader.parse_file(metafile_path)
+
+        # Generate PSRCAT shortlist for this observation
+        # Use boresight coordinates if available, otherwise use first candidate
+        if metafile.boresight and metafile.boresight.ra and metafile.boresight.dec:
+            from astropy.coordinates import SkyCoord
+            boresight_coord = SkyCoord(ra=metafile.boresight.ra, dec=metafile.boresight.dec, frame='icrs')
+
+            # Initialize PSRCAT parser if needed
+            global _psrcat_parser
+            if _psrcat_parser is None and os.path.exists(settings.PSRCAT_DB_PATH):
+                print(f"Initializing PSRCAT parser for shortlisting")
+                _psrcat_parser = PSRCATParser(settings.PSRCAT_DB_PATH)
+                print(f"PSRCAT parser initialized with {len(_psrcat_parser.pulsars)} pulsars")
+
+            if _psrcat_parser is not None:
+                # Create shortlist within 10 degrees of boresight
+                shortlist = _psrcat_parser.shortlist_by_region(boresight_coord, radius_deg=10.0)
+
+                # Cache the shortlist with key: base_dir:utc
+                shortlist_key = f"{base_dir}:{utc}"
+                _psrcat_shortlist_cache[shortlist_key] = shortlist
+                print(f"Cached PSRCAT shortlist for {shortlist_key}: {len(shortlist)} pulsars")
+
         return metafile
     except Exception as e:
         raise HTTPException(
@@ -329,9 +359,10 @@ async def search_pulsar_scraper(
             detail="Candidate does not have RA/DEC coordinates"
         )
 
-    # Convert RA from hours to degrees (RA is stored as decimal hours)
-    ra_deg = target_candidate.ra * 15.0
-    dec_deg = target_candidate.dec  # DEC is already in degrees
+    # Convert RA/DEC to degrees for searching
+    ra_deg = target_candidate.ra.degree
+    dec_deg = target_candidate.dec.degree
+    ra_hours = target_candidate.ra.hour
 
     # Get DM for search
     dm = target_candidate.dm_opt or 0.0
@@ -356,7 +387,7 @@ async def search_pulsar_scraper(
             return {
                 "candidate": {
                     "line_num": line_num,
-                    "ra_hours": target_candidate.ra,
+                    "ra_hours": ra_hours,
                     "ra_deg": ra_deg,
                     "dec_deg": dec_deg,
                     "dm": dm
@@ -413,9 +444,11 @@ async def search_psrcat(
             detail="Candidate does not have RA/DEC coordinates"
         )
 
-    # Convert RA from hours to degrees (RA is stored as decimal hours)
-    ra_deg = target_candidate.ra * 15.0
-    dec_deg = target_candidate.dec  # DEC is already in degrees
+
+    # Convert RA/DEC to degrees for searching
+    ra_deg = target_candidate.ra.degree
+    dec_deg = target_candidate.dec.degree
+    ra_hours = target_candidate.ra.hour
 
     # Get DM for search
     dm = target_candidate.dm_opt or 0.0
@@ -428,50 +461,94 @@ async def search_psrcat(
         )
 
     try:
-        # Initialize parser and search
-        parser = PSRCATParser(settings.PSRCAT_DB_PATH)
+        # Use cached parser instance, or create one if it doesn't exist
+        global _psrcat_parser
+        if _psrcat_parser is None:
+            print(f"Initializing PSRCAT parser from {settings.PSRCAT_DB_PATH}")
+            _psrcat_parser = PSRCATParser(settings.PSRCAT_DB_PATH)
+            print(f"PSRCAT parser initialized with {len(_psrcat_parser.pulsars)} pulsars")
+
+        parser = _psrcat_parser
+
+        # Get cached SkyCoord from candidate
+        target_coord = target_candidate.coord
+        if target_coord is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to create coordinate from candidate RA/DEC"
+            )
 
         # Search with configured radius in degrees
         # Convert degrees to arcminutes for the search_nearby function
         radius_arcmin = settings.PSRCAT_SEARCH_RADIUS_DEG * 60.0
 
+        # Try to use shortlist if available
+        shortlist_key = f"{base_dir}:{target_candidate.utc_start}"
+        shortlist = _psrcat_shortlist_cache.get(shortlist_key)
+
+        if shortlist is not None:
+            print(f"Using PSRCAT shortlist with {len(shortlist)} pulsars")
+        else:
+            print(f"No shortlist available, searching all {len(parser.pulsars)} pulsars")
+
         # Get ALL pulsars within radius (no DM filtering)
         matches = parser.search_nearby(
-            ra_deg=ra_deg,
-            dec_deg=dec_deg,
+            target=target_coord,
             radius_arcmin=radius_arcmin,
             dm=None,  # Don't filter by DM
-            dm_tolerance=None  # Don't filter by DM
+            dm_tolerance=None,  # Don't filter by DM
+            shortlist=shortlist  # Use shortlist if available
         )
 
         # Calculate frequency ratios and DM differences for all matches
         candidate_f0 = target_candidate.f0_opt or target_candidate.f0_user
         candidate_dm = target_candidate.dm_opt or 0.0
 
+        # Convert matches to JSON-serializable format
+        serializable_matches = []
         for match in matches:
             # Calculate DM difference
             if 'dm' in match and match['dm'] is not None:
-                match['delta_dm'] = abs(match['dm'] - candidate_dm)
+                delta_dm = abs(match['dm'] - candidate_dm)
             else:
-                match['delta_dm'] = None
+                delta_dm = None
 
             # Calculate frequency ratios
             if candidate_f0 and ('f0' in match or 'p0' in match):
                 pulsar_f0 = match.get('f0') or (1.0 / match['p0'] if 'p0' in match else None)
                 if pulsar_f0:
-                    match['freq_ratio_cand_psr'] = candidate_f0 / pulsar_f0
-                    match['freq_ratio_psr_cand'] = pulsar_f0 / candidate_f0
+                    freq_ratio_cand_psr = candidate_f0 / pulsar_f0
+                    freq_ratio_psr_cand = pulsar_f0 / candidate_f0
                 else:
-                    match['freq_ratio_cand_psr'] = None
-                    match['freq_ratio_psr_cand'] = None
+                    freq_ratio_cand_psr = None
+                    freq_ratio_psr_cand = None
             else:
-                match['freq_ratio_cand_psr'] = None
-                match['freq_ratio_psr_cand'] = None
+                freq_ratio_cand_psr = None
+                freq_ratio_psr_cand = None
+
+            # Create serializable dict with only primitive types
+            serializable_match = {
+                'name': match.get('name'),
+                'name_b': match.get('name_b'),
+                'ra_str': match.get('ra_str'),
+                'dec_str': match.get('dec_str'),
+                'dm': match.get('dm'),
+                'p0': match.get('p0'),
+                'f0': match.get('f0'),
+                'dist_kpc': match.get('dist_kpc'),
+                'dist_pc': match.get('dist_pc'),
+                'angular_distance_arcmin': match.get('angular_distance_arcmin'),
+                'angular_distance_deg': match.get('angular_distance_deg'),
+                'delta_dm': delta_dm,
+                'freq_ratio_cand_psr': freq_ratio_cand_psr,
+                'freq_ratio_psr_cand': freq_ratio_psr_cand,
+            }
+            serializable_matches.append(serializable_match)
 
         return {
             "candidate": {
                 "line_num": line_num,
-                "ra_hours": target_candidate.ra,
+                "ra_hours": ra_hours,
                 "ra_deg": ra_deg,
                 "dec_deg": dec_deg,
                 "dm": candidate_dm,
@@ -481,8 +558,8 @@ async def search_psrcat(
                 "radius_deg": settings.PSRCAT_SEARCH_RADIUS_DEG,
                 "radius_arcmin": radius_arcmin
             },
-            "results": matches,
-            "count": len(matches)
+            "results": serializable_matches,
+            "count": len(serializable_matches)
         }
     except Exception as e:
         raise HTTPException(

@@ -4,8 +4,9 @@ PSRCAT Database Parser
 Parses the psrcat.db file to search for known pulsars.
 """
 import os
-import math
 from typing import List, Dict, Optional
+from astropy.coordinates import Angle, SkyCoord
+from astropy import units as u
 
 
 class PSRCATParser:
@@ -58,15 +59,15 @@ class PSRCATParser:
                     # RA in HH:MM:SS.SS format
                     try:
                         current_pulsar['ra_str'] = parts[1]
-                        current_pulsar['ra_deg'] = self._ra_to_degrees(parts[1])
-                    except:
+                        current_pulsar['ra'] = Angle(parts[1], unit=u.hourangle)
+                    except Exception:
                         pass
                 elif param == 'DECJ':
                     # DEC in DD:MM:SS.S format
                     try:
                         current_pulsar['dec_str'] = parts[1]
-                        current_pulsar['dec_deg'] = self._dec_to_degrees(parts[1])
-                    except:
+                        current_pulsar['dec'] = Angle(parts[1], unit=u.degree)
+                    except Exception:
                         pass
                 elif param == 'P0':
                     # Period in seconds
@@ -96,96 +97,54 @@ class PSRCATParser:
             # Add last pulsar if any
             if current_pulsar:
                 self.pulsars.append(current_pulsar)
+        for pulsar in self.pulsars:
+            if 'ra' in pulsar and 'dec' in pulsar:
+                pulsar['coord'] = SkyCoord(ra=pulsar['ra'], dec=pulsar['dec'], frame='icrs')
 
-    def _ra_to_degrees(self, ra_str: str) -> float:
+    def shortlist_by_region(
+        self,
+        center: SkyCoord,
+        radius_deg: float = 10.0
+    ) -> List[Dict]:
         """
-        Convert RA string (HH:MM:SS.SS) to degrees
+        Create a shortlist of pulsars within a region for fast searching.
 
         Args:
-            ra_str: RA in format HH:MM:SS.SS
+            center: Center coordinates (e.g., boresight)
+            radius_deg: Radius in degrees to include pulsars
 
         Returns:
-            RA in degrees
+            List of pulsars within the region
         """
-        parts = ra_str.split(':')
-        hours = float(parts[0])
-        minutes = float(parts[1]) if len(parts) > 1 else 0
-        seconds = float(parts[2]) if len(parts) > 2 else 0
+        shortlist = []
+        for pulsar in self.pulsars:
+            if 'coord' not in pulsar:
+                continue
 
-        # Convert to degrees (15 degrees per hour)
-        return (hours + minutes / 60.0 + seconds / 3600.0) * 15.0
+            dist = center.separation(pulsar['coord']).degree
+            if dist <= radius_deg:
+                shortlist.append(pulsar)
 
-    def _dec_to_degrees(self, dec_str: str) -> float:
-        """
-        Convert DEC string (+DD:MM:SS.S) to degrees
-
-        Args:
-            dec_str: DEC in format +DD:MM:SS.S or -DD:MM:SS.S
-
-        Returns:
-            DEC in degrees
-        """
-        # Handle sign
-        sign = 1.0
-        if dec_str.startswith('-'):
-            sign = -1.0
-            dec_str = dec_str[1:]
-        elif dec_str.startswith('+'):
-            dec_str = dec_str[1:]
-
-        parts = dec_str.split(':')
-        degrees = float(parts[0])
-        minutes = float(parts[1]) if len(parts) > 1 else 0
-        seconds = float(parts[2]) if len(parts) > 2 else 0
-
-        return sign * (degrees + minutes / 60.0 + seconds / 3600.0)
-
-    def _angular_distance(self, ra1_deg: float, dec1_deg: float, ra2_deg: float, dec2_deg: float) -> float:
-        """
-        Calculate angular distance between two positions in degrees
-        Using haversine formula
-
-        Args:
-            ra1_deg: RA of first position in degrees
-            dec1_deg: DEC of first position in degrees
-            ra2_deg: RA of second position in degrees
-            dec2_deg: DEC of second position in degrees
-
-        Returns:
-            Angular distance in degrees
-        """
-        # Convert to radians
-        ra1 = math.radians(ra1_deg)
-        dec1 = math.radians(dec1_deg)
-        ra2 = math.radians(ra2_deg)
-        dec2 = math.radians(dec2_deg)
-
-        # Haversine formula
-        delta_ra = ra2 - ra1
-        delta_dec = dec2 - dec1
-
-        a = math.sin(delta_dec / 2)**2 + math.cos(dec1) * math.cos(dec2) * math.sin(delta_ra / 2)**2
-        c = 2 * math.asin(math.sqrt(a))
-
-        return math.degrees(c)
+        print(f"Shortlisted {len(shortlist)} pulsars within {radius_deg}° of center")
+        return shortlist
 
     def search_nearby(
         self,
-        ra_deg: float,
-        dec_deg: float,
+        target: SkyCoord,
         radius_arcmin: float = 5.0,
         dm: Optional[float] = None,
-        dm_tolerance: Optional[float] = None
+        dm_tolerance: Optional[float] = None,
+        shortlist: Optional[List[Dict]] = None
     ) -> List[Dict]:
         """
         Search for pulsars near given coordinates
 
         Args:
-            ra_deg: Right ascension in degrees
-            dec_deg: Declination in degrees
+            target: Target coordinates as SkyCoord
             radius_arcmin: Search radius in arcminutes
             dm: Dispersion measure for matching
             dm_tolerance: DM tolerance in pc/cc
+            shortlist: Optional pre-filtered list of pulsars to search (for performance)
 
         Returns:
             List of matching pulsars with distance information
@@ -193,23 +152,27 @@ class PSRCATParser:
         radius_deg = radius_arcmin / 60.0
         matches = []
 
-        for pulsar in self.pulsars:
+        # Use shortlist if provided, otherwise search all pulsars
+        search_list = shortlist if shortlist is not None else self.pulsars
+
+        for pulsar in search_list:
             # Skip pulsars without coordinates
-            if 'ra_deg' not in pulsar or 'dec_deg' not in pulsar:
+            if 'coord' not in pulsar:
                 continue
 
+            if dm is not None and dm_tolerance is not None and 'dm' in pulsar:
+                    if abs(pulsar['dm'] - dm) > dm_tolerance:
+                        continue
+
             # Calculate angular distance
-            dist = self._angular_distance(ra_deg, dec_deg, pulsar['ra_deg'], pulsar['dec_deg'])
+            dist = target.separation(pulsar['coord']).degree
 
             # Check if within radius
             if dist <= radius_deg:
                 # Check DM if specified
-                if dm is not None and dm_tolerance is not None and 'dm' in pulsar:
-                    if abs(pulsar['dm'] - dm) > dm_tolerance:
-                        continue
-
+                
                 # Add distance info
-                match = pulsar.copy()
+                match = pulsar
                 match['angular_distance_arcmin'] = dist * 60.0
                 match['angular_distance_deg'] = dist
 
