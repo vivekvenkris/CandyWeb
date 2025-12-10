@@ -421,7 +421,7 @@ export default function Diagnostics({ candidate, baseDir }) {
           }}
         >
           <Search size={18} />
-          {loadingPulsarScraper ? 'Searching...' : 'Search PSC2'}
+          {loadingPulsarScraper ? 'Searching...' : 'Search survey scraper'}
         </button>
       </div>
 
@@ -466,7 +466,7 @@ export default function Diagnostics({ candidate, baseDir }) {
               zIndex: 1
             }}>
               <h2 style={{ margin: 0, fontSize: '1.40rem', fontWeight: '700' }}>
-                Known Pulsar Search Results
+                Pulsar survey scraper results
               </h2>
               <button
                 onClick={() => setShowPulsarPopup(false)}
@@ -509,7 +509,7 @@ export default function Diagnostics({ candidate, baseDir }) {
                       <div><strong>RA:</strong> {pulsarScraperResults.candidate.ra_deg.toFixed(5)}° ({pulsarScraperResults.candidate.ra_hours.toFixed(5)}h)</div>
                       <div><strong>DEC:</strong> {pulsarScraperResults.candidate.dec_deg.toFixed(5)}°</div>
                       <div><strong>DM:</strong> {pulsarScraperResults.candidate.dm.toFixed(2)} pc/cc</div>
-                      <div><strong>Search Radius:</strong> {pulsarScraperResults.search_params.radius_arcmin} arcmin</div>
+                      <div><strong>Search Radius:</strong> {pulsarScraperResults.search_params.radius_arcmin}°</div>
                       <div><strong>DM Tolerance:</strong> ±{pulsarScraperResults.search_params.dm_tolerance} pc/cc</div>
                     </div>
                   </div>

@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     NEIGHBOR_CALC_CORES: int = 8
 
     # Pulsar scraper database search parameters
-    PULSAR_SCRAPER_RADIUS: float = 300.0  # Search radius in arcminutes
+    PULSAR_SCRAPER_RADIUS: float = 5.0  # Search radius in degrees
     PULSAR_SCRAPER_DM_TOL: float = 10.0  # DM tolerance in pc/cc
 
     # PSRCAT database path and search radius

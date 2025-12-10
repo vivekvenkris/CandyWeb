@@ -384,6 +384,38 @@ async def search_pulsar_scraper(
             response.raise_for_status()
             data = response.json()
 
+            # Transform PSC2 API response from dict to array
+            # PSC2 returns {searchra: ..., searchdec: ..., nmatches: N, PSRNAME1: {...}, PSRNAME2: {...}}
+            # We need to convert to array of pulsar objects
+            metadata_keys = {'searchra', 'searchdec', 'searchcoord', 'searchrad', 'searchdm', 'searchdmtolerance', 'nmatches'}
+            pulsars = []
+
+            for key, value in data.items():
+                if key not in metadata_keys and isinstance(value, dict):
+                    # This is a pulsar entry
+                    pulsar_data = {"name": key}
+
+                    # Flatten the nested structure - extract 'value' from each field
+                    for field_key, field_value in value.items():
+                        if isinstance(field_value, dict) and 'value' in field_value:
+                            pulsar_data[field_key] = field_value['value']
+                        else:
+                            pulsar_data[field_key] = field_value
+
+                    # Map PSC2 fields to expected frontend fields
+                    if 'ra' in pulsar_data:
+                        pulsar_data['raj_deg'] = pulsar_data['ra']
+                    if 'dec' in pulsar_data:
+                        pulsar_data['decj_deg'] = pulsar_data['dec']
+                    if 'period' in pulsar_data:
+                        # Convert period from ms to seconds
+                        pulsar_data['p0'] = pulsar_data['period'] / 1000.0
+                    if 'distance' in pulsar_data:
+                        # Convert distance from degrees to arcminutes
+                        pulsar_data['angular_separation'] = pulsar_data['distance'] * 60.0
+
+                    pulsars.append(pulsar_data)
+
             return {
                 "candidate": {
                     "line_num": line_num,
@@ -396,7 +428,8 @@ async def search_pulsar_scraper(
                     "radius_arcmin": settings.PULSAR_SCRAPER_RADIUS,
                     "dm_tolerance": settings.PULSAR_SCRAPER_DM_TOL
                 },
-                "results": data
+                "nmatches": data.get('nmatches', 0),
+                "results": pulsars
             }
     except httpx.HTTPError as e:
         raise HTTPException(
