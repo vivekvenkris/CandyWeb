@@ -64,7 +64,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
       }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <h1 style={{
-            fontSize: '2rem',
+            fontSize: '2.15rem',
             fontWeight: '700',
             color: '#1f2937',
             marginBottom: '0.5rem'
@@ -73,7 +73,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
           </h1>
           <p style={{
             color: '#6b7280',
-            fontSize: '0.95rem'
+            fontSize: '1.10rem'
           }}>
             Register for CandyWeb
           </p>
@@ -84,7 +84,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
             <label style={{
               display: 'block',
               marginBottom: '0.5rem',
-              fontSize: '0.9rem',
+              fontSize: '1.05rem',
               fontWeight: '600',
               color: '#374151'
             }}>
@@ -100,7 +100,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
               style={{
                 width: '100%',
                 padding: '0.75rem 1rem',
-                fontSize: '1rem',
+                fontSize: '1.15rem',
                 border: '2px solid #e5e7eb',
                 borderRadius: '8px',
                 outline: 'none',
@@ -116,7 +116,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
             <label style={{
               display: 'block',
               marginBottom: '0.5rem',
-              fontSize: '0.9rem',
+              fontSize: '1.05rem',
               fontWeight: '600',
               color: '#374151'
             }}>
@@ -131,7 +131,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
               style={{
                 width: '100%',
                 padding: '0.75rem 1rem',
-                fontSize: '1rem',
+                fontSize: '1.15rem',
                 border: '2px solid #e5e7eb',
                 borderRadius: '8px',
                 outline: 'none',
@@ -147,7 +147,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
             <label style={{
               display: 'block',
               marginBottom: '0.5rem',
-              fontSize: '0.9rem',
+              fontSize: '1.05rem',
               fontWeight: '600',
               color: '#374151'
             }}>
@@ -162,7 +162,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
               style={{
                 width: '100%',
                 padding: '0.75rem 1rem',
-                fontSize: '1rem',
+                fontSize: '1.15rem',
                 border: '2px solid #e5e7eb',
                 borderRadius: '8px',
                 outline: 'none',
@@ -182,7 +182,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
               border: '1px solid #fca5a5',
               borderRadius: '8px',
               color: '#991b1b',
-              fontSize: '0.9rem'
+              fontSize: '1.05rem'
             }}>
               {error}
             </div>
@@ -194,7 +194,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
             style={{
               width: '100%',
               padding: '0.875rem',
-              fontSize: '1rem',
+              fontSize: '1.15rem',
               fontWeight: '600',
               color: 'white',
               background: loading ? '#9ca3af' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -229,7 +229,7 @@ function Register({ onRegisterSuccess, onBackToLogin }) {
               background: 'none',
               border: 'none',
               color: '#667eea',
-              fontSize: '0.9rem',
+              fontSize: '1.05rem',
               cursor: 'pointer',
               textDecoration: 'underline'
             }}

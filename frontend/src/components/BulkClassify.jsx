@@ -111,7 +111,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
 
   return (
     <div style={{ padding: '1rem' }}>
-      <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '1.1rem' }}>
+      <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '1.25rem' }}>
         Similar Candidates with harmonically related frequencies and similar DM
       </h3>
 
@@ -142,7 +142,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
             backgroundColor: '#f0f9ff',
             border: '1px solid #bae6fd',
             borderRadius: '6px',
-            fontSize: '0.9rem'
+            fontSize: '1.05rem'
           }}>
             Found <strong>{similarCandidates.length}</strong> similar uncategorized candidate{similarCandidates.length !== 1 ? 's' : ''}
           </div>
@@ -156,7 +156,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
           }}>
             <table style={{
               width: '100%',
-              fontSize: '0.85rem',
+              fontSize: '1.00rem',
               borderCollapse: 'collapse'
             }}>
               <thead style={{
@@ -220,7 +220,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              fontSize: '0.9rem',
+              fontSize: '1.05rem',
               cursor: 'pointer'
             }}>
               <input
@@ -233,7 +233,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
           </div>
 
           <div>
-            <h4 style={{ fontSize: '0.95rem', marginBottom: '0.75rem' }}>
+            <h4 style={{ fontSize: '1.10rem', marginBottom: '0.75rem' }}>
               Bulk Classify As:
             </h4>
             <div style={{
@@ -251,7 +251,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
                   border: 'none',
                   borderRadius: '4px',
                   cursor: classifying ? 'not-allowed' : 'pointer',
-                  fontSize: '0.9rem',
+                  fontSize: '1.05rem',
                   fontWeight: '500',
                   opacity: classifying ? 0.6 : 1
                 }}
@@ -268,7 +268,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
                   border: 'none',
                   borderRadius: '4px',
                   cursor: classifying ? 'not-allowed' : 'pointer',
-                  fontSize: '0.9rem',
+                  fontSize: '1.05rem',
                   fontWeight: '500',
                   opacity: classifying ? 0.6 : 1
                 }}
@@ -285,7 +285,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
                   border: 'none',
                   borderRadius: '4px',
                   cursor: classifying ? 'not-allowed' : 'pointer',
-                  fontSize: '0.9rem',
+                  fontSize: '1.05rem',
                   fontWeight: '500',
                   opacity: classifying ? 0.6 : 1
                 }}
@@ -302,7 +302,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
                   border: 'none',
                   borderRadius: '4px',
                   cursor: classifying ? 'not-allowed' : 'pointer',
-                  fontSize: '0.9rem',
+                  fontSize: '1.05rem',
                   fontWeight: '500',
                   opacity: classifying ? 0.6 : 1
                 }}
@@ -319,7 +319,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
                   border: 'none',
                   borderRadius: '4px',
                   cursor: classifying ? 'not-allowed' : 'pointer',
-                  fontSize: '0.9rem',
+                  fontSize: '1.05rem',
                   fontWeight: '500',
                   opacity: classifying ? 0.6 : 1
                 }}
@@ -336,7 +336,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
                   border: 'none',
                   borderRadius: '4px',
                   cursor: classifying ? 'not-allowed' : 'pointer',
-                  fontSize: '0.9rem',
+                  fontSize: '1.05rem',
                   fontWeight: '500',
                   opacity: classifying ? 0.6 : 1
                 }}
@@ -353,7 +353,7 @@ export default function BulkClassify({ candidate, baseDir, onClassified, onCount
               backgroundColor: message.startsWith('✓') ? '#d1fae5' : '#fee',
               border: `1px solid ${message.startsWith('✓') ? '#a7f3d0' : '#fcc'}`,
               borderRadius: '6px',
-              fontSize: '0.9rem',
+              fontSize: '1.05rem',
               color: message.startsWith('✓') ? '#065f46' : '#c00'
             }}>
               {message}

@@ -421,7 +421,7 @@ const BeamMapCanvas = memo(function BeamMapCanvas({ candidate, metaFile }) {
             color: 'white',
             padding: '8px 12px',
             borderRadius: '4px',
-            fontSize: '12px',
+            fontSize: '14px',
             pointerEvents: 'none',
             zIndex: 1000,
             whiteSpace: 'nowrap'
@@ -435,7 +435,7 @@ const BeamMapCanvas = memo(function BeamMapCanvas({ candidate, metaFile }) {
 
       {/* Legend and Controls */}
       <div style={{
-        fontSize: '0.85rem',
+        fontSize: '1.00rem',
         color: '#6b7280',
         padding: '0.5rem',
         borderTop: '1px solid #e5e7eb',
@@ -466,14 +466,14 @@ const BeamMapCanvas = memo(function BeamMapCanvas({ candidate, metaFile }) {
           )}
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+          <span style={{ fontSize: '0.95rem', color: '#6b7280' }}>
             Zoom: {transform.scale.toFixed(1)}x
           </span>
           <button
             onClick={() => setTransform({ offsetX: 0, offsetY: 0, scale: 1 })}
             style={{
               padding: '0.25rem 0.5rem',
-              fontSize: '0.75rem',
+              fontSize: '0.90rem',
               background: '#667eea',
               color: 'white',
               border: 'none',
@@ -492,7 +492,7 @@ const BeamMapCanvas = memo(function BeamMapCanvas({ candidate, metaFile }) {
         position: 'absolute',
         top: '10px',
         right: '10px',
-        fontSize: '0.75rem',
+        fontSize: '0.90rem',
         color: '#6b7280',
         background: 'rgba(255, 255, 255, 0.9)',
         padding: '6px 10px',

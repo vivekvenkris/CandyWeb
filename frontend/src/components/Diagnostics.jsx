@@ -153,7 +153,7 @@ export default function Diagnostics({ candidate, baseDir }) {
         alignItems: 'center',
         borderBottom: '1px solid #e5e7eb'
       }}>
-        <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>{title}</span>
+        <span style={{ fontWeight: '600', fontSize: '1.05rem' }}>{title}</span>
         <button
           onClick={() => copyToClipboard(command, commandKey)}
           style={{
@@ -161,7 +161,7 @@ export default function Diagnostics({ candidate, baseDir }) {
             alignItems: 'center',
             gap: '0.25rem',
             padding: '0.25rem 0.5rem',
-            fontSize: '0.85rem',
+            fontSize: '1.00rem',
             backgroundColor: copiedCommand === commandKey ? '#10b981' : '#667eea',
             color: 'white',
             border: 'none',
@@ -185,7 +185,7 @@ export default function Diagnostics({ candidate, baseDir }) {
       <pre style={{
         margin: 0,
         padding: '0.75rem',
-        fontSize: '0.8rem',
+        fontSize: '0.95rem',
         backgroundColor: '#1f2937',
         color: '#f3f4f6',
         overflowX: 'auto',
@@ -202,9 +202,9 @@ export default function Diagnostics({ candidate, baseDir }) {
     <div style={{ padding: '1rem' }}>
       {/* PSRCAT Known Pulsars Table - Always visible, at top */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h4 style={{ fontSize: '1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <h4 style={{ fontSize: '1.15rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           Known Pulsars (PSRCAT)
-          {loadingPsrcat && <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>Loading...</span>}
+          {loadingPsrcat && <span style={{ fontSize: '1.00rem', color: '#6b7280' }}>Loading...</span>}
         </h4>
 
         {psrcatError && (
@@ -214,7 +214,7 @@ export default function Diagnostics({ candidate, baseDir }) {
             border: '1px solid #fca5a5',
             borderRadius: '6px',
             color: '#991b1b',
-            fontSize: '0.85rem',
+            fontSize: '1.00rem',
             marginBottom: '1rem'
           }}>
             {psrcatError}
@@ -225,7 +225,7 @@ export default function Diagnostics({ candidate, baseDir }) {
           <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
             <table style={{
               width: '100%',
-              fontSize: '0.8rem',
+              fontSize: '0.95rem',
               borderCollapse: 'collapse'
             }}>
               <thead>
@@ -283,7 +283,7 @@ export default function Diagnostics({ candidate, baseDir }) {
               </tbody>
             </table>
             {psrcatResults.results.length > 10 && (
-              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#6b7280', textAlign: 'center' }}>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.95rem', color: '#6b7280', textAlign: 'center' }}>
                 Showing 10 of {psrcatResults.count} pulsars within {psrcatResults.search_params.radius_deg}°
               </div>
             )}
@@ -294,7 +294,7 @@ export default function Diagnostics({ candidate, baseDir }) {
             backgroundColor: '#f9fafb',
             borderRadius: '6px',
             color: '#6b7280',
-            fontSize: '0.85rem',
+            fontSize: '1.00rem',
             textAlign: 'center'
           }}>
             No known pulsars found within search radius
@@ -302,7 +302,7 @@ export default function Diagnostics({ candidate, baseDir }) {
         )}
       </div>
 
-      <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem' }}>
+      <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.25rem' }}>
         Folding Commands
       </h3>
 
@@ -330,7 +330,7 @@ export default function Diagnostics({ candidate, baseDir }) {
         backgroundColor: '#f0f9ff',
         border: '1px solid #bae6fd',
         borderRadius: '6px',
-        fontSize: '0.85rem'
+        fontSize: '1.00rem'
       }}>
         <strong>Note:</strong> Commands use optimized parameters from the candidate.
         {candidate.acc_opt && Math.abs(candidate.acc_opt) > 2 * Math.abs(candidate.acc_opt_err || 0) && (
@@ -341,10 +341,10 @@ export default function Diagnostics({ candidate, baseDir }) {
       </div>
 
       <div style={{ marginTop: '1.5rem' }}>
-        <h4 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Candidate Parameters</h4>
+        <h4 style={{ fontSize: '1.15rem', marginBottom: '0.75rem' }}>Candidate Parameters</h4>
         <table style={{
           width: '100%',
-          fontSize: '0.85rem',
+          fontSize: '1.00rem',
           borderCollapse: 'collapse'
         }}>
           <tbody>
@@ -411,7 +411,7 @@ export default function Diagnostics({ candidate, baseDir }) {
             border: 'none',
             borderRadius: '6px',
             cursor: loadingPulsarScraper ? 'not-allowed' : 'pointer',
-            fontSize: '0.95rem',
+            fontSize: '1.10rem',
             fontWeight: '600',
             display: 'flex',
             alignItems: 'center',
@@ -465,7 +465,7 @@ export default function Diagnostics({ candidate, baseDir }) {
               backgroundColor: 'white',
               zIndex: 1
             }}>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '700' }}>
+              <h2 style={{ margin: 0, fontSize: '1.40rem', fontWeight: '700' }}>
                 Known Pulsar Search Results
               </h2>
               <button
@@ -502,9 +502,9 @@ export default function Diagnostics({ candidate, baseDir }) {
                     padding: '1rem',
                     backgroundColor: '#f9fafb',
                     borderRadius: '6px',
-                    fontSize: '0.9rem'
+                    fontSize: '1.05rem'
                   }}>
-                    <h3 style={{ marginTop: 0, fontSize: '1rem', marginBottom: '0.75rem' }}>Search Parameters</h3>
+                    <h3 style={{ marginTop: 0, fontSize: '1.15rem', marginBottom: '0.75rem' }}>Search Parameters</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                       <div><strong>RA:</strong> {pulsarScraperResults.candidate.ra_deg.toFixed(5)}° ({pulsarScraperResults.candidate.ra_hours.toFixed(5)}h)</div>
                       <div><strong>DEC:</strong> {pulsarScraperResults.candidate.dec_deg.toFixed(5)}°</div>
@@ -517,13 +517,13 @@ export default function Diagnostics({ candidate, baseDir }) {
                   {/* Results */}
                   {pulsarScraperResults.results && pulsarScraperResults.results.length > 0 ? (
                     <div>
-                      <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>
+                      <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem' }}>
                         Found {Array.isArray(pulsarScraperResults.results) ? pulsarScraperResults.results.length : 0} Known Pulsar{(Array.isArray(pulsarScraperResults.results) && pulsarScraperResults.results.length !== 1) ? 's' : ''}
                       </h3>
                       <div style={{ overflowX: 'auto' }}>
                         <table style={{
                           width: '100%',
-                          fontSize: '0.85rem',
+                          fontSize: '1.00rem',
                           borderCollapse: 'collapse'
                         }}>
                           <thead>

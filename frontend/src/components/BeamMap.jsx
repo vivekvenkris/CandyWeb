@@ -184,7 +184,7 @@ const BeamMap = memo(function BeamMap({ candidate, metaFile, beams = [] }) {
         useResizeHandler={true}
       />
       <div style={{
-        fontSize: '0.85rem',
+        fontSize: '1.00rem',
         color: '#6b7280',
         padding: '0.5rem',
         borderTop: '1px solid #e5e7eb'

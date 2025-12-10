@@ -37,11 +37,18 @@ const CLASSIFICATION_LABELS = {
   'UNCAT': 'Uncategorized'
 }
 
-function ScatterPlot({ candidates = [], currentCandidate = null }) {
-  const [xParam, setXParam] = useState('dm_user')
-  const [yParam, setYParam] = useState('p0')
-  const [logX, setLogX] = useState(false)
-  const [logY, setLogY] = useState(true)
+function ScatterPlot({
+  candidates = [],
+  currentCandidate = null,
+  defaultX = 'dm_user',
+  defaultY = 'p0',
+  defaultLogX = false,
+  defaultLogY = true
+}) {
+  const [xParam, setXParam] = useState(defaultX)
+  const [yParam, setYParam] = useState(defaultY)
+  const [logX, setLogX] = useState(defaultLogX)
+  const [logY, setLogY] = useState(defaultLogY)
   const [colorBy, setColorBy] = useState('classification')
   const containerRef = useRef(null)
   const plotRef = useRef(null)
@@ -119,7 +126,7 @@ function ScatterPlot({ candidates = [], currentCandidate = null }) {
           text: textLabels,
           hovertemplate: '%{text}<extra></extra>',
           marker: {
-            size: isCurrentList.map(isCurrent => isCurrent ? 14 : 8),
+            size: isCurrentList.map(isCurrent => isCurrent ? 17 : 10), // Increased by 20%: 14->17, 8->10
             color: CLASSIFICATION_COLORS[classification] || '#9ca3af',
             symbol: isCurrentList.map(isCurrent => isCurrent ? 'star' : 'circle'),
             line: {
@@ -139,15 +146,26 @@ function ScatterPlot({ candidates = [], currentCandidate = null }) {
     const yParamLabel = PLOT_PARAMETERS.find(p => p.value === yParam)?.label || yParam
 
     return {
-      title: `${yParamLabel} vs ${xParamLabel}`,
+      title: {
+        text: `${yParamLabel} vs ${xParamLabel}`,
+        font: { size: 18 }  // Increased from default 16 to 18
+      },
       xaxis: {
-        title: xParamLabel,
+        title: {
+          text: xParamLabel,
+          font: { size: 16 }  // Increased from default 14 to 16
+        },
+        tickfont: { size: 14 },  // Increased from default 12 to 14
         showgrid: true,
         gridcolor: '#e5e7eb',
         type: logX ? 'log' : 'linear'
       },
       yaxis: {
-        title: yParamLabel,
+        title: {
+          text: yParamLabel,
+          font: { size: 16 }  // Increased from default 14 to 16
+        },
+        tickfont: { size: 14 },  // Increased from default 12 to 14
         showgrid: true,
         gridcolor: '#e5e7eb',
         type: logY ? 'log' : 'linear'
@@ -158,9 +176,10 @@ function ScatterPlot({ candidates = [], currentCandidate = null }) {
         x: 1.02,
         y: 1,
         xanchor: 'left',
-        yanchor: 'top'
+        yanchor: 'top',
+        font: { size: 14 }  // Increased from default 12 to 14
       },
-      margin: { l: 60, r: 150, t: 60, b: 60 },
+      margin: { l: 70, r: 150, t: 70, b: 70 },  // Increased margins for larger fonts
       plot_bgcolor: '#f9fafb',
       paper_bgcolor: 'white',
       autosize: true
@@ -193,13 +212,13 @@ function ScatterPlot({ candidates = [], currentCandidate = null }) {
         backgroundColor: '#f9fafb'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: '500' }}>X:</label>
+          <label style={{ fontSize: '1.15rem', fontWeight: '500' }}>X:</label>
           <select
             value={xParam}
             onChange={(e) => setXParam(e.target.value)}
             style={{
               padding: '0.375rem 0.5rem',
-              fontSize: '0.875rem',
+              fontSize: '1.15rem',
               border: '1px solid #d1d5db',
               borderRadius: '0.375rem'
             }}
@@ -208,7 +227,7 @@ function ScatterPlot({ candidates = [], currentCandidate = null }) {
               <option key={param.value} value={param.value}>{param.label}</option>
             ))}
           </select>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '1.15rem' }}>
             <input
               type="checkbox"
               checked={logX}
@@ -219,13 +238,13 @@ function ScatterPlot({ candidates = [], currentCandidate = null }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: '500' }}>Y:</label>
+          <label style={{ fontSize: '1.15rem', fontWeight: '500' }}>Y:</label>
           <select
             value={yParam}
             onChange={(e) => setYParam(e.target.value)}
             style={{
               padding: '0.375rem 0.5rem',
-              fontSize: '0.875rem',
+              fontSize: '1.15rem',
               border: '1px solid #d1d5db',
               borderRadius: '0.375rem'
             }}
@@ -234,7 +253,7 @@ function ScatterPlot({ candidates = [], currentCandidate = null }) {
               <option key={param.value} value={param.value}>{param.label}</option>
             ))}
           </select>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.875rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '1.15rem' }}>
             <input
               type="checkbox"
               checked={logY}
@@ -246,7 +265,7 @@ function ScatterPlot({ candidates = [], currentCandidate = null }) {
 
         <div style={{
           marginLeft: 'auto',
-          fontSize: '0.875rem',
+          fontSize: '1.15rem',
           color: '#6b7280'
         }}>
           {candidates.length} candidates

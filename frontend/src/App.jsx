@@ -459,7 +459,7 @@ function App() {
         justifyContent: 'center',
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         color: 'white',
-        fontSize: '1.2rem'
+        fontSize: '1.35rem'
       }}>
         Checking authentication...
       </div>
@@ -536,7 +536,7 @@ function App() {
         <div className="toolbar-logo">
           <span className="logo-text">CandyWeb</span>
           <div style={{ marginLeft: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+            <span style={{ fontSize: '1.00rem', color: '#6b7280' }}>
               {user?.name || user?.username}
             </span>
             <button
@@ -547,7 +547,7 @@ function App() {
                 alignItems: 'center',
                 gap: '0.5rem',
                 padding: '0.5rem 0.75rem',
-                fontSize: '0.85rem'
+                fontSize: '1.00rem'
               }}
               title="Logout"
             >
@@ -695,7 +695,7 @@ function App() {
                     padding: '0.75rem',
                     background: '#f9fafb',
                     borderRadius: '6px',
-                    fontSize: '0.85rem',
+                    fontSize: '1.00rem',
                     marginTop: '1rem'
                   }}>
                     <div style={{ display: 'flex', gap: '2rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
@@ -707,7 +707,7 @@ function App() {
                           marginLeft: '0.5rem',
                           padding: '0.25rem 0.5rem',
                           borderRadius: '4px',
-                          fontSize: '0.75rem',
+                          fontSize: '0.90rem',
                           fontWeight: '600',
                           backgroundColor: getClassColor(currentCandidate.candidate_type),
                           color: 'white'
@@ -716,14 +716,14 @@ function App() {
                         </span>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '2rem', marginBottom: '0.5rem', fontSize: '0.8rem', color: '#6b7280' }}>
+                    <div style={{ display: 'flex', gap: '2rem', marginBottom: '0.5rem', fontSize: '0.95rem', color: '#6b7280' }}>
                       <div><strong>Position:</strong> RA: {currentCandidate.ra?.toFixed(4)}h, DEC: {currentCandidate.dec?.toFixed(4)}°</div>
                       <div><strong>T_obs:</strong> {currentCandidate.tobs?.toFixed(1)} s</div>
                     </div>
-                    <div style={{ marginBottom: '0.5rem', fontSize: '0.75rem', color: '#6b7280', fontFamily: 'monospace' }}>
+                    <div style={{ marginBottom: '0.5rem', fontSize: '0.90rem', color: '#6b7280', fontFamily: 'monospace' }}>
                       <strong>PNG:</strong> {currentCandidate.png_path || 'N/A'}
                     </div>
-                    <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                    <table style={{ width: '100%', fontSize: '1.00rem', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ borderBottom: '2px solid #d1d5db' }}>
                           <th style={{ padding: '0.25rem 0.5rem', textAlign: 'left' }}></th>
@@ -827,7 +827,7 @@ function App() {
                                 alignItems: 'center',
                                 background: '#f9fafb'
                               }}>
-                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Beam Map</h3>
+                                <h3 style={{ margin: 0, fontSize: '1.10rem', fontWeight: '600' }}>Beam Map</h3>
                                 {beamMapMode === 'docked' && (
                                   <button
                                     onClick={() => setBeamMapMode('floating')}
@@ -836,7 +836,7 @@ function App() {
                                       border: 'none',
                                       color: '#667eea',
                                       cursor: 'pointer',
-                                      fontSize: '0.85rem',
+                                      fontSize: '1.00rem',
                                       padding: '0.25rem 0.5rem'
                                     }}
                                     title="Pop out to floating panel"
@@ -860,7 +860,7 @@ function App() {
                                 alignItems: 'center',
                                 background: '#f9fafb'
                               }}>
-                                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '600' }}>Diagnostics</h3>
+                                <h3 style={{ margin: 0, fontSize: '1.10rem', fontWeight: '600' }}>Diagnostics</h3>
                                 {diagnosticsMode === 'docked' && (
                                   <button
                                     onClick={() => setDiagnosticsMode('floating')}
@@ -869,7 +869,7 @@ function App() {
                                       border: 'none',
                                       color: '#667eea',
                                       cursor: 'pointer',
-                                      fontSize: '0.85rem',
+                                      fontSize: '1.00rem',
                                       padding: '0.25rem 0.5rem'
                                     }}
                                     title="Pop out to floating panel"
@@ -890,7 +890,7 @@ function App() {
                       {
                         id: 'scatterplot',
                         title: 'Scatter Plots',
-                        defaultOpen: false,
+                        defaultOpen: true,
                         defaultHeight: 500,
                         onPopOut: scatterPlotMode === 'docked' ? () => setScatterPlotMode('floating') : null,
                         content: scatterPlotMode === 'docked' ? (

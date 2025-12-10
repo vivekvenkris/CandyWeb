@@ -25,8 +25,8 @@ export default function AccordionPanel({ title, children, defaultOpen = false, o
         }}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600' }}>
-          {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600', fontSize: '1.20rem' }}>
+          {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           <span>{title}</span>
         </div>
         {onPopOut && (
@@ -46,7 +46,7 @@ export default function AccordionPanel({ title, children, defaultOpen = false, o
             }}
             title="Pop out to floating window"
           >
-            <Maximize2 size={16} />
+            <Maximize2 size={18} />
           </button>
         )}
       </div>
