@@ -94,10 +94,6 @@ The backend will start on `http://localhost:8000`
 - API docs available at `http://localhost:8000/docs`
 - Health check at `http://localhost:8000/health`
 
-**Default Credentials:**
-- Username: `admin`
-- Password: `admin`
-
 New users can register via the web interface.
 
 ### Frontend Setup
