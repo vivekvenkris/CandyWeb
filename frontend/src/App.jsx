@@ -12,11 +12,12 @@ import BeamMapCanvas from './components/BeamMapCanvas'
 import Diagnostics from './components/Diagnostics'
 import BulkClassify from './components/BulkClassify'
 import ScatterPlot from './components/ScatterPlot'
+import SettingsDialog from './components/SettingsDialog'
 import { loadCandidates, filterCandidates, classifyCandidate, saveClassification, getAllCandidates, getMetafile } from './api/client'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useAuth } from './hooks/useAuth'
 import { saveAppSession, restoreAppSession, clearAppSession } from './hooks/usePersistedState'
-import { Map, FileText, Users, Save, ScatterChart, LogOut } from 'lucide-react'
+import { Map, FileText, Users, Save, ScatterChart, LogOut, Settings } from 'lucide-react'
 
 function App() {
   // Authentication state
@@ -40,6 +41,15 @@ function App() {
 
   // BulkClassify counts for title
   const [bulkClassifyCounts, setBulkClassifyCounts] = useState({ unclassified: 0, classified: 0 })
+
+  // Settings dialog state
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+  const [sessionSettings, setSessionSettings] = useState({
+    pulsarScraperRadius: 5.0,
+    pulsarScraperDmTol: 10.0,
+    psrcatSearchRadius: 2.0,
+    autosaveInterval: 2
+  })
 
   // Ref for PNG viewer (for panel snapping)
   const pngViewerRef = useRef(null)
@@ -534,11 +544,24 @@ function App() {
         </div>
 
         <div className="toolbar-logo">
-          <span className="logo-text">CandyWeb</span>
           <div style={{ marginLeft: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span style={{ fontSize: '1.00rem', color: '#6b7280' }}>
               {user?.name || user?.username}
             </span>
+            <button
+              onClick={() => setShowSettingsDialog(true)}
+              className="btn"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 0.75rem',
+                fontSize: '1.00rem'
+              }}
+              title="Settings"
+            >
+              <Settings size={16} />
+            </button>
             <button
               onClick={logout}
               className="btn"
@@ -555,6 +578,7 @@ function App() {
               Logout
             </button>
           </div>
+          <span className="logo-text">CandyWeb</span>
         </div>
       </div>
 
@@ -983,6 +1007,15 @@ function App() {
             onCountsUpdate={setBulkClassifyCounts}
           />
         </DraggablePanel>
+      )}
+
+      {/* Settings Dialog */}
+      {showSettingsDialog && (
+        <SettingsDialog
+          sessionSettings={sessionSettings}
+          setSessionSettings={setSessionSettings}
+          onClose={() => setShowSettingsDialog(false)}
+        />
       )}
 
       <footer className="app-footer">
