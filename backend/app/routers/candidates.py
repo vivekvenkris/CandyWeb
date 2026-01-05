@@ -297,7 +297,7 @@ async def get_metafile(base_dir: str, utc: Optional[str] = Query(None)):
 
         # Generate PSRCAT shortlist for this observation
         # Use boresight coordinates if available, otherwise use first candidate
-        if metafile.boresight and metafile.boresight.ra and metafile.boresight.dec:
+        if metafile.boresight and metafile.boresight.ra is not None and metafile.boresight.dec is not None:
             from astropy.coordinates import SkyCoord
             boresight_coord = SkyCoord(ra=metafile.boresight.ra, dec=metafile.boresight.dec, frame='icrs')
 
