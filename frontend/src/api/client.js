@@ -3,7 +3,7 @@ import axios from 'axios'
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: '/api',  // Proxied to backend via Vite
-  timeout: 30000,
+  timeout: 300000,  // 5 minutes for remote server operations
   headers: {
     'Content-Type': 'application/json',
   },

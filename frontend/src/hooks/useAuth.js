@@ -54,10 +54,15 @@ export function useAuth() {
   }
 
   const logout = async () => {
-    try {
-      await apiLogout()
-    } catch (err) {
-      console.error('Logout error:', err)
+    // Only call logout API if we have a valid session token
+    const hasSession = localStorage.getItem('session_token')
+
+    if (hasSession) {
+      try {
+        await apiLogout()
+      } catch (err) {
+        console.error('Logout error:', err)
+      }
     }
 
     // Clear local state
