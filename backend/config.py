@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     PULSAR_SCRAPER_DM_TOL: float = 10.0  # DM tolerance in pc/cc
 
     # PSRCAT database path and search radius
-    PSRCAT_DB_PATH: str = "/Users/vkrishnan/dev/CandyWeb/psrcat.db"
+    PSRCAT_DB_PATH: str = "psrcat.db"
     PSRCAT_SEARCH_RADIUS_DEG: float = 2.0  # Search radius in degrees for PSRCAT matching
 
     class Config:
