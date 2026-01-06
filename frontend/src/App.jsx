@@ -51,6 +51,10 @@ function App() {
     autosaveInterval: 2
   })
 
+  // Track if there are unsaved changes (any classified candidates that haven't been saved)
+  const [lastSaveTimestamp, setLastSaveTimestamp] = useState(null)
+  const [hasClassified, setHasClassified] = useState(false)
+
   // Ref for PNG viewer (for panel snapping)
   const pngViewerRef = useRef(null)
 
@@ -207,6 +211,10 @@ function App() {
     setBulkClassifyMode('docked')
     setScatterPlotMode('docked')
 
+    // Reset save tracking
+    setLastSaveTimestamp(null)
+    setHasClassified(false)
+
     setStatusMessage(`Loaded ${data.total_candidates} candidates from ${data.utcs?.length || 0} UTCs`)
   }
 
@@ -252,6 +260,9 @@ function App() {
   const handleBulkClassified = async () => {
     // After bulk classification, reload all candidates for this UTC to update scatter plot
     if (!selectedUTC) return
+
+    // Mark that we have classified something
+    setHasClassified(true)
 
     try {
       const allCandidatesResponse = await getAllCandidates(baseDir)
@@ -419,6 +430,9 @@ function App() {
     ))
     setStatusMessage(`Classified candidate ${lineNum} as ${candidateType}`)
 
+    // Mark that we have classified something
+    setHasClassified(true)
+
     // Auto-advance immediately
     if (nextIndex !== currentIndex) {
       setCurrentIndex(nextIndex)
@@ -479,12 +493,22 @@ function App() {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
+      // Update save tracking
+      setLastSaveTimestamp(new Date())
+      setHasClassified(false)
+
       setStatusMessage(`✓ Saved ${allCandidates.length} classifications to ${filename} (server + downloaded)`)
     } catch (err) {
       console.error('Error saving:', err)
       setStatusMessage('Error saving: ' + (err.response?.data?.detail || err.message))
     }
   }
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = useCallback(() => {
+    // If we've classified something and haven't saved, there are unsaved changes
+    return hasClassified && baseDir !== ''
+  }, [hasClassified, baseDir])
 
   // Show loading screen while checking authentication
   if (authLoading) {
@@ -513,7 +537,7 @@ function App() {
       {/* Compact Toolbar with Logo */}
       <div className="toolbar">
         <div className="toolbar-controls">
-          <DirectorySelector onLoadComplete={handleLoadComplete} />
+          <DirectorySelector onLoadComplete={handleLoadComplete} hasUnsavedChanges={hasUnsavedChanges} />
 
           {utcs.length > 0 && (
             <UTCSelector
