@@ -177,9 +177,36 @@ function App() {
 
   const handleLoadComplete = (data, dir) => {
     console.log('Load complete:', data)
+
+    // Fully reset application state
     setBaseDir(dir)
     setCsvPath(`${dir}/candidates.csv`)
     setUtcs(data.utcs || [])
+    setSelectedUTC('')
+    setFilteredCandidates([])
+    setAllCandidatesInUTC([])
+    setMetaFile(null)
+    setCurrentIndex(0)
+
+    // Reset filter state to defaults
+    setFilterTypes({
+      UNCAT: true,
+      T1_CAND: false,
+      T2_CAND: false,
+      RFI: false,
+      NOISE: false,
+      KNOWN_PSR: false,
+      NB_PSR: false,
+    })
+    setSortBy('FOLD_SNR')
+    setSortOrder('desc')
+
+    // Reset panel visibility modes to docked
+    setBeamMapMode('docked')
+    setDiagnosticsMode('docked')
+    setBulkClassifyMode('docked')
+    setScatterPlotMode('docked')
+
     setStatusMessage(`Loaded ${data.total_candidates} candidates from ${data.utcs?.length || 0} UTCs`)
   }
 
