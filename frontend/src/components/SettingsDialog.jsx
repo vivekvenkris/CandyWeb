@@ -165,6 +165,31 @@ export default function SettingsDialog({ sessionSettings, setSessionSettings, on
             </p>
           </div>
 
+          {/* Image Preload Count */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', fontSize: '1.10rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+              Image Preload Count
+            </label>
+            <input
+              type="number"
+              step="1"
+              min="0"
+              max="10"
+              value={sessionSettings.imagePreloadCount}
+              onChange={(e) => setSessionSettings({ ...sessionSettings, imagePreloadCount: parseInt(e.target.value) || 0 })}
+              style={{
+                width: '100%',
+                padding: '0.6rem',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '1.05rem'
+              }}
+            />
+            <p style={{ fontSize: '1.00rem', color: '#6b7280', marginTop: '0.5rem', margin: '0.5rem 0 0 0' }}>
+              Number of images to preload ahead for faster navigation (0 = disabled, 3 = default). Higher values use more bandwidth but provide smoother navigation.
+            </p>
+          </div>
+
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
             <button
@@ -173,7 +198,8 @@ export default function SettingsDialog({ sessionSettings, setSessionSettings, on
                   pulsarScraperRadius: 5.0,
                   pulsarScraperDmTol: 10.0,
                   psrcatSearchRadius: 2.0,
-                  autosaveInterval: 2
+                  autosaveInterval: 2,
+                  imagePreloadCount: 3
                 })
               }}
               style={{

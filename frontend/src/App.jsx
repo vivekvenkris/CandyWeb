@@ -49,7 +49,8 @@ function App() {
     pulsarScraperRadius: 5.0,
     pulsarScraperDmTol: 10.0,
     psrcatSearchRadius: 2.0,
-    autosaveInterval: 2
+    autosaveInterval: 2,
+    imagePreloadCount: 20  // Number of images to preload ahead (0 = disabled)
   })
 
   // Track if there are unsaved changes (any classified candidates that haven't been saved)
@@ -76,19 +77,10 @@ function App() {
 
   // Preload next and previous images for faster navigation
   useEffect(() => {
-    if (filteredCandidates.length === 0 || !baseDir) return
+    if (filteredCandidates.length === 0 || !baseDir || sessionSettings.imagePreloadCount === 0) return
 
     const preloadImages = []
-
-    // Preload next image
-    if (currentIndex < filteredCandidates.length - 1) {
-      const nextCandidate = filteredCandidates[currentIndex + 1]
-      if (nextCandidate?.png_path) {
-        const img = new Image()
-        img.src = `/api/files/image?path=${baseDir}/${nextCandidate.png_path}`
-        preloadImages.push(img)
-      }
-    }
+    const preloadCount = sessionSettings.imagePreloadCount || 3
 
     // Preload previous image
     if (currentIndex > 0) {
@@ -100,13 +92,16 @@ function App() {
       }
     }
 
-    // Preload 2 images ahead for smoother experience
-    if (currentIndex < filteredCandidates.length - 2) {
-      const nextNextCandidate = filteredCandidates[currentIndex + 2]
-      if (nextNextCandidate?.png_path) {
-        const img = new Image()
-        img.src = `/api/files/image?path=${baseDir}/${nextNextCandidate.png_path}`
-        preloadImages.push(img)
+    // Preload next N images ahead (configurable)
+    for (let i = 1; i <= preloadCount; i++) {
+      const nextIndex = currentIndex + i
+      if (nextIndex < filteredCandidates.length) {
+        const nextCandidate = filteredCandidates[nextIndex]
+        if (nextCandidate?.png_path) {
+          const img = new Image()
+          img.src = `/api/files/image?path=${baseDir}/${nextCandidate.png_path}`
+          preloadImages.push(img)
+        }
       }
     }
 
@@ -116,7 +111,7 @@ function App() {
         img.src = ''
       })
     }
-  }, [currentIndex, filteredCandidates, baseDir])
+  }, [currentIndex, filteredCandidates, baseDir, sessionSettings.imagePreloadCount])
 
   // Restore session on mount (after authentication) or clear on logout
   useEffect(() => {
