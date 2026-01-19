@@ -32,6 +32,7 @@ function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [statusMessage, setStatusMessage] = useState('Ready. Select a directory to begin.')
   const [loading, setLoading] = useState(false)
+  const [imageLoading, setImageLoading] = useState(false)
 
   // Panel state - track if each tool is popped out (floating) or docked (accordion)
   const [beamMapMode, setBeamMapMode] = useState('docked') // 'docked' or 'floating'
@@ -72,6 +73,50 @@ function App() {
   const [sortOrder, setSortOrder] = useState('desc')
 
   const currentCandidate = filteredCandidates[currentIndex]
+
+  // Preload next and previous images for faster navigation
+  useEffect(() => {
+    if (filteredCandidates.length === 0 || !baseDir) return
+
+    const preloadImages = []
+
+    // Preload next image
+    if (currentIndex < filteredCandidates.length - 1) {
+      const nextCandidate = filteredCandidates[currentIndex + 1]
+      if (nextCandidate?.png_path) {
+        const img = new Image()
+        img.src = `/api/files/image?path=${baseDir}/${nextCandidate.png_path}`
+        preloadImages.push(img)
+      }
+    }
+
+    // Preload previous image
+    if (currentIndex > 0) {
+      const prevCandidate = filteredCandidates[currentIndex - 1]
+      if (prevCandidate?.png_path) {
+        const img = new Image()
+        img.src = `/api/files/image?path=${baseDir}/${prevCandidate.png_path}`
+        preloadImages.push(img)
+      }
+    }
+
+    // Preload 2 images ahead for smoother experience
+    if (currentIndex < filteredCandidates.length - 2) {
+      const nextNextCandidate = filteredCandidates[currentIndex + 2]
+      if (nextNextCandidate?.png_path) {
+        const img = new Image()
+        img.src = `/api/files/image?path=${baseDir}/${nextNextCandidate.png_path}`
+        preloadImages.push(img)
+      }
+    }
+
+    return () => {
+      // Cleanup
+      preloadImages.forEach(img => {
+        img.src = ''
+      })
+    }
+  }, [currentIndex, filteredCandidates, baseDir])
 
   // Restore session on mount (after authentication) or clear on logout
   useEffect(() => {
@@ -685,7 +730,20 @@ function App() {
 
                   <div className="image-viewer" ref={pngViewerRef}>
                     {currentCandidate?.png_path ? (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                        {imageLoading && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            color: '#667eea',
+                            fontSize: '1.2rem',
+                            fontWeight: '600'
+                          }}>
+                            Loading image...
+                          </div>
+                        )}
                         <img
                           src={`/api/files/image?path=${baseDir}/${currentCandidate.png_path}`}
                           alt="Candidate"
@@ -693,13 +751,18 @@ function App() {
                             maxWidth: '100%',
                             maxHeight: '100%',
                             objectFit: 'contain',
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            opacity: imageLoading ? 0.3 : 1,
+                            transition: 'opacity 0.2s'
                           }}
                           onClick={() => {
                             const imageUrl = `/api/files/image?path=${baseDir}/${currentCandidate.png_path}`
                             window.open(imageUrl, '_blank')
                           }}
+                          onLoadStart={() => setImageLoading(true)}
+                          onLoad={() => setImageLoading(false)}
                           onError={(e) => {
+                            setImageLoading(false)
                             e.target.style.display = 'none'
                             e.target.nextSibling.style.display = 'block'
                           }}

@@ -82,7 +82,14 @@ async def get_image(path: str):
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail=f"Image not found: {path}")
 
-    return FileResponse(full_path)
+    # Add aggressive caching headers to speed up image loading
+    return FileResponse(
+        full_path,
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",  # Cache for 1 year (images don't change)
+            "ETag": f'"{os.path.getmtime(full_path)}"',  # Use modification time as ETag
+        }
+    )
 
 
 @router.post("/save-classification")
