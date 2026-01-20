@@ -33,10 +33,42 @@ class Candidate:
             obs_name: Name of the observation (e.g., 'OBS1', 'OBS2')
         """
         self.obs_name = obs_name
-        self.dm = float(row['DM_opt'])
-        self.period = float(row['P0'])
-        self.f0 = 1.0 / self.period if self.period > 0 else 0.0
-        self.acc = float(row.get('Acc', 0.0))  # Acceleration
+
+        # Handle different possible column names (case insensitive)
+        # DM
+        dm_col = None
+        for col in ['dm_opt', 'DM_opt', 'dm', 'DM']:
+            if col in row.index:
+                dm_col = col
+                break
+        if dm_col is None:
+            raise ValueError("Could not find DM column")
+        self.dm = float(row[dm_col])
+
+        # Period/Frequency - prefer f0_opt, calculate period if needed
+        if 'f0_opt' in row.index:
+            self.f0 = float(row['f0_opt'])
+            self.period = 1.0 / self.f0 if self.f0 > 0 else 0.0
+        elif 'F0' in row.index or 'f0' in row.index:
+            f0_col = 'F0' if 'F0' in row.index else 'f0'
+            self.f0 = float(row[f0_col])
+            self.period = 1.0 / self.f0 if self.f0 > 0 else 0.0
+        elif 'P0' in row.index or 'p0' in row.index or 'period' in row.index:
+            p0_col = 'P0' if 'P0' in row.index else ('p0' if 'p0' in row.index else 'period')
+            self.period = float(row[p0_col])
+            self.f0 = 1.0 / self.period if self.period > 0 else 0.0
+        else:
+            raise ValueError("Could not find frequency or period column")
+
+        # Acceleration
+        acc_col = None
+        for col in ['acc_opt', 'Acc', 'acc', 'acceleration']:
+            if col in row.index:
+                acc_col = col
+                break
+        self.acc = float(row[acc_col]) if acc_col else 0.0
+
+        # PNG path
         self.png_path = str(row['png_path'])
 
         # Store all original data for reference
@@ -72,21 +104,30 @@ class Candidate:
 
         corrected_other_period = 1.0 / corrected_other_f0
 
-        # Calculate true period difference accounting for harmonics
-        if self.period / corrected_other_period > 1.0:
-            true_period_difference = self.period % corrected_other_period
-        else:
-            true_period_difference = corrected_other_period % self.period
-
         # Direct period difference
         direct_period_difference = abs(self.period - corrected_other_period)
 
-        # Check if related based on either modulo difference or direct difference
-        is_match = (true_period_difference <= period_thresh or
-                   direct_period_difference <= period_thresh)
+        # Calculate true period difference accounting for harmonics
+        # Only use modulo if periods are reasonably close (within factor of 2)
+        period_ratio = max(self.period, corrected_other_period) / min(self.period, corrected_other_period)
 
-        # Return the smaller of the two differences for reporting
-        delta_period = min(true_period_difference, direct_period_difference)
+        if period_ratio <= 2.0:
+            # Periods are close, use modulo to account for small harmonic differences
+            if self.period / corrected_other_period > 1.0:
+                true_period_difference = self.period % corrected_other_period
+            else:
+                true_period_difference = corrected_other_period % self.period
+
+            # Check if related based on either modulo difference or direct difference
+            is_match = (true_period_difference <= period_thresh or
+                       direct_period_difference <= period_thresh)
+
+            # Return the smaller of the two differences for reporting
+            delta_period = min(true_period_difference, direct_period_difference)
+        else:
+            # Periods are very different, only use direct comparison
+            is_match = direct_period_difference <= period_thresh
+            delta_period = direct_period_difference
 
         return is_match, delta_dm, delta_period
 
@@ -154,7 +195,8 @@ def load_candidates(csv_path: str, obs_name: str) -> List[Candidate]:
     if class_col is None:
         raise ValueError(f"Could not find classification column in {csv_path}")
 
-    t1_df = df[df[class_col] == 'T1']
+    # Filter for T1 - handle both 'T1' and 'T1_CAND' values
+    t1_df = df[df[class_col].str.contains('T1', case=False, na=False)]
 
     print(f"Loaded {len(t1_df)} T1 candidates from {obs_name}")
 
@@ -172,7 +214,8 @@ def load_candidates(csv_path: str, obs_name: str) -> List[Candidate]:
 def create_comparison_plot(cand1: Candidate, cand2: Candidate,
                           delta_dm: float, delta_period: float,
                           base_dirs1: List[str], base_dirs2: List[str],
-                          output_dir: str, match_idx: int):
+                          output_dir: str, match_idx: int,
+                          tobs_over_c: float):
     """
     Create a comparison plot showing both candidates and their delta values.
 
@@ -185,6 +228,7 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
         base_dirs2: Base directories to search for OBS2 PNGs
         output_dir: Directory to save output plot
         match_idx: Index of this match (for filename)
+        tobs_over_c: Observation time / speed of light for demodulation
     """
     # Find PNG files
     png1 = find_png_file(cand1.png_path, base_dirs1)
@@ -195,44 +239,81 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
     if png2 is None:
         print(f"Warning: Could not find PNG for {cand2.obs_name}: {cand2.png_path}")
 
-    # Create figure
-    fig = plt.figure(figsize=(16, 10))
-    gs = GridSpec(3, 2, figure=fig, height_ratios=[1, 3, 3], hspace=0.3, wspace=0.2)
+    # Calculate demodulated period for cand2
+    corrected_f0 = cand2.f0 - (cand2.acc - cand1.acc) * cand2.f0 * tobs_over_c
+    corrected_period = 1.0 / corrected_f0 if corrected_f0 > 0 else 0.0
+
+    # Create figure with adjusted layout for table
+    fig = plt.figure(figsize=(20, 10))
+    gs = GridSpec(3, 2, figure=fig, height_ratios=[0.8, 0.8, 4], hspace=0.3, wspace=0.2)
 
     # Title with delta values
     title_ax = fig.add_subplot(gs[0, :])
     title_ax.axis('off')
     title_text = (
         f"Matched Candidates: {cand1.obs_name} ↔ {cand2.obs_name}\n"
-        f"ΔDM = {delta_dm:.2f} pc/cm³  |  ΔP₀ = {delta_period*1000:.4f} ms\n"
-        f"{cand1.obs_name}: DM={cand1.dm:.2f}, P₀={cand1.period*1000:.4f} ms  |  "
-        f"{cand2.obs_name}: DM={cand2.dm:.2f}, P₀={cand2.period*1000:.4f} ms"
+        f"ΔDM = {delta_dm:.2f} pc/cm³  |  ΔP₀ (demodulated) = {delta_period*1000:.4f} ms"
     )
     title_ax.text(0.5, 0.5, title_text, ha='center', va='center',
                  fontsize=14, fontweight='bold', transform=title_ax.transAxes)
 
-    # Display first PNG
-    ax1 = fig.add_subplot(gs[1, :])
+    # Table with parameters
+    table_ax = fig.add_subplot(gs[1, :])
+    table_ax.axis('off')
+
+    # Create table data
+    table_data = [
+        ['Parameter', cand1.obs_name, cand2.obs_name, 'Δ'],
+        ['DM (pc/cm³)', f'{cand1.dm:.2f}', f'{cand2.dm:.2f}', f'{delta_dm:.2f}'],
+        ['P₀_opt (ms)', f'{cand1.period*1000:.4f}', f'{cand2.period*1000:.4f}',
+         f'{abs(cand1.period - cand2.period)*1000:.4f}'],
+        ['P₀_demod (ms)', f'{cand1.period*1000:.4f}', f'{corrected_period*1000:.4f}',
+         f'{delta_period*1000:.4f}'],
+        ['Acc (m/s²)', f'{cand1.acc:.2e}', f'{cand2.acc:.2e}',
+         f'{abs(cand1.acc - cand2.acc):.2e}']
+    ]
+
+    table = table_ax.table(cellText=table_data, cellLoc='center', loc='center',
+                          colWidths=[0.25, 0.25, 0.25, 0.25])
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1, 2)
+
+    # Style header row
+    for i in range(4):
+        table[(0, i)].set_facecolor('#4CAF50')
+        table[(0, i)].set_text_props(weight='bold', color='white')
+
+    # Alternate row colors
+    for i in range(1, 5):
+        for j in range(4):
+            if i % 2 == 0:
+                table[(i, j)].set_facecolor('#f0f0f0')
+
+    # Display first PNG (left side)
+    ax1 = fig.add_subplot(gs[2, 0])
     if png1 and os.path.exists(png1):
         img1 = Image.open(png1)
         ax1.imshow(img1)
         ax1.set_title(f"{cand1.obs_name}", fontsize=12, fontweight='bold')
     else:
-        ax1.text(0.5, 0.5, f"PNG not found:\n{cand1.png_path}",
-                ha='center', va='center', transform=ax1.transAxes)
-        ax1.set_title(f"{cand1.obs_name} (PNG Missing)", fontsize=12, color='red')
+        ax1.text(0.5, 0.5, "No PNG found",
+                ha='center', va='center', transform=ax1.transAxes,
+                fontsize=16, color='red')
+        ax1.set_title(f"{cand1.obs_name}", fontsize=12, fontweight='bold')
     ax1.axis('off')
 
-    # Display second PNG
-    ax2 = fig.add_subplot(gs[2, :])
+    # Display second PNG (right side)
+    ax2 = fig.add_subplot(gs[2, 1])
     if png2 and os.path.exists(png2):
         img2 = Image.open(png2)
         ax2.imshow(img2)
         ax2.set_title(f"{cand2.obs_name}", fontsize=12, fontweight='bold')
     else:
-        ax2.text(0.5, 0.5, f"PNG not found:\n{cand2.png_path}",
-                ha='center', va='center', transform=ax2.transAxes)
-        ax2.set_title(f"{cand2.obs_name} (PNG Missing)", fontsize=12, color='red')
+        ax2.text(0.5, 0.5, "No PNG found",
+                ha='center', va='center', transform=ax2.transAxes,
+                fontsize=16, color='red')
+        ax2.set_title(f"{cand2.obs_name}", fontsize=12, fontweight='bold')
     ax2.axis('off')
 
     # Save plot
@@ -319,7 +400,7 @@ def compare_observations(csv1: str, csv2: str,
                 # Create comparison plot
                 create_comparison_plot(
                     cand1, cand2, delta_dm, delta_period,
-                    base_dirs1, base_dirs2, output_dir, match_idx
+                    base_dirs1, base_dirs2, output_dir, match_idx, tobs_over_c
                 )
                 match_idx += 1
 
