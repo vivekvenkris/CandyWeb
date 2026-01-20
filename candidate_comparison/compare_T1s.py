@@ -132,32 +132,46 @@ class Candidate:
         return is_match, delta_dm, delta_period
 
 
-def find_png_file(png_path: str, base_dirs: List[str]) -> Optional[str]:
+def find_png_file(png_path: str, base_dirs: List[str], verbose: bool = False) -> Optional[str]:
     """
     Find the actual PNG file given a relative path and base directories.
 
     Args:
         png_path: Relative path to PNG file (e.g., 'path/to/png')
         base_dirs: List of base directories to search in
+        verbose: If True, print search progress
 
     Returns:
         Full path to PNG file if found, None otherwise
     """
+    if verbose:
+        print(f"    Searching for PNG: {png_path}")
+
     # If the path is already absolute and exists, return it
     if os.path.isabs(png_path) and os.path.exists(png_path):
+        if verbose:
+            print(f"    Found (absolute path): {png_path}")
         return png_path
 
     # Search in each base directory
     for base_dir in base_dirs:
+        if verbose:
+            print(f"    Searching in base directory: {base_dir}")
+
         # Try direct path under base directory
         full_path = os.path.join(base_dir, png_path)
         if os.path.exists(full_path):
+            if verbose:
+                print(f"    Found (direct): {full_path}")
             return full_path
 
         # Try walking through subdirectories to find the file
         # This handles cases like base_path/path1/path/to/png
         png_basename = os.path.basename(png_path)
         png_dirname = os.path.dirname(png_path)
+
+        if verbose:
+            print(f"    Walking subdirectories...")
 
         for root, dirs, files in os.walk(base_dir):
             # Check if current directory ends with the png_dirname
@@ -166,8 +180,12 @@ def find_png_file(png_path: str, base_dirs: List[str]) -> Optional[str]:
                 if os.path.exists(candidate_path):
                     # Verify this matches the full relative path structure
                     if candidate_path.endswith(png_path):
+                        if verbose:
+                            print(f"    Found (walked): {candidate_path}")
                         return candidate_path
 
+    if verbose:
+        print(f"    PNG not found")
     return None
 
 
@@ -231,13 +249,11 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
         tobs_over_c: Observation time / speed of light for demodulation
     """
     # Find PNG files
-    png1 = find_png_file(cand1.png_path, base_dirs1)
-    png2 = find_png_file(cand2.png_path, base_dirs2)
+    print(f"  Searching for {cand1.obs_name} PNG...")
+    png1 = find_png_file(cand1.png_path, base_dirs1, verbose=True)
 
-    if png1 is None:
-        print(f"Warning: Could not find PNG for {cand1.obs_name}: {cand1.png_path}")
-    if png2 is None:
-        print(f"Warning: Could not find PNG for {cand2.obs_name}: {cand2.png_path}")
+    print(f"  Searching for {cand2.obs_name} PNG...")
+    png2 = find_png_file(cand2.png_path, base_dirs2, verbose=True)
 
     # Calculate demodulated period for cand2
     corrected_f0 = cand2.f0 - (cand2.acc - cand1.acc) * cand2.f0 * tobs_over_c
@@ -264,13 +280,13 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
     # Create table data
     table_data = [
         ['Parameter', cand1.obs_name, cand2.obs_name, 'Δ'],
-        ['DM (pc/cm³)', f'{cand1.dm:.2f}', f'{cand2.dm:.2f}', f'{delta_dm:.2f}'],
-        ['P₀_opt (ms)', f'{cand1.period*1000:.4f}', f'{cand2.period*1000:.4f}',
-         f'{abs(cand1.period - cand2.period)*1000:.4f}'],
-        ['P₀_demod (ms)', f'{cand1.period*1000:.4f}', f'{corrected_period*1000:.4f}',
-         f'{delta_period*1000:.4f}'],
-        ['Acc (m/s²)', f'{cand1.acc:.2e}', f'{cand2.acc:.2e}',
-         f'{abs(cand1.acc - cand2.acc):.2e}']
+        ['DM (pc/cm³)', f'{cand1.dm:.6f}', f'{cand2.dm:.6f}', f'{delta_dm:.6f}'],
+        ['P₀_opt (ms)', f'{cand1.period*1000:.6f}', f'{cand2.period*1000:.6f}',
+         f'{abs(cand1.period - cand2.period)*1000:.6f}'],
+        ['P₀_demod (ms)', f'{cand1.period*1000:.6f}', f'{corrected_period*1000:.6f}',
+         f'{delta_period*1000:.6f}'],
+        ['Acc (m/s²)', f'{cand1.acc:.6e}', f'{cand2.acc:.6e}',
+         f'{abs(cand1.acc - cand2.acc):.6e}']
     ]
 
     table = table_ax.table(cellText=table_data, cellLoc='center', loc='center',
