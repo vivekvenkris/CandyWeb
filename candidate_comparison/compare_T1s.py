@@ -19,10 +19,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from PIL import Image
+from astropy.coordinates import SkyCoord
+import astropy.units as u
 
 
 class Candidate:
     """Represents a pulsar candidate with comparison methods."""
+
+    # Lookup table for tobs values based on png_path
+    TOBS_LOOKUP = {
+        'full': 7200,
+        '60m': 3600,
+        '30m': 1800,
+        '15m': 900
+    }
 
     def __init__(self, row: pd.Series, obs_name: str):
         """
@@ -68,39 +78,122 @@ class Candidate:
                 break
         self.acc = float(row[acc_col]) if acc_col else 0.0
 
+        # RA and DEC
+        ra_col = None
+        for col in ['ra_opt', 'RA_opt', 'ra', 'RA']:
+            if col in row.index:
+                ra_col = col
+                break
+        if ra_col is None:
+            raise ValueError("Could not find RA column")
+        self.ra = row[ra_col]  # Keep as string for SkyCoord parsing
+
+        dec_col = None
+        for col in ['dec_opt', 'DEC_opt', 'dec', 'DEC']:
+            if col in row.index:
+                dec_col = col
+                break
+        if dec_col is None:
+            raise ValueError("Could not find DEC column")
+        self.dec = row[dec_col]  # Keep as string for SkyCoord parsing
+
         # PNG path
         self.png_path = str(row['png_path'])
+
+        # Determine tobs from png_path using lookup table
+        self.tobs = self._determine_tobs(self.png_path)
 
         # Store all original data for reference
         self.data = row.to_dict()
 
-    def is_related(self, other: 'Candidate', period_thresh: float,
-                   dm_thresh: float, tobs_over_c: float) -> Tuple[bool, float, float]:
+    def _determine_tobs(self, png_path: str) -> float:
         """
-        Check if another candidate is related based on DM and period.
+        Determine observation time from png_path using lookup table.
+
+        Args:
+            png_path: Path to the PNG file
+
+        Returns:
+            Observation time in seconds (default: 1800 if not found)
+        """
+        for key, tobs in self.TOBS_LOOKUP.items():
+            if key in png_path:
+                return tobs
+        # Default to 30m if no match found
+        return 1800.0
+
+    def is_ignored_frequency(self, ignore_periods: List[float], period_thresh: float) -> bool:
+        """
+        Check if this candidate's period matches any ignored periods.
+
+        Args:
+            ignore_periods: List of periods to ignore (in seconds)
+            period_thresh: Period threshold for matching (seconds)
+
+        Returns:
+            True if this candidate should be ignored, False otherwise
+        """
+        for ignore_period in ignore_periods:
+            if abs(self.period - ignore_period) <= period_thresh:
+                return True
+        return False
+
+    def angular_distance(self, other: 'Candidate') -> float:
+        """
+        Calculate angular distance between two candidates in arcseconds.
+
+        Uses astropy's SkyCoord for accurate spherical geometry calculations.
+
+        Args:
+            other: Another candidate to compare with
+
+        Returns:
+            Angular distance in arcseconds
+        """
+        coord1 = SkyCoord(ra=str(self.ra), dec=str(self.dec),
+                         unit=(u.hourangle, u.deg))
+        coord2 = SkyCoord(ra=str(other.ra), dec=str(other.dec),
+                         unit=(u.hourangle, u.deg))
+        separation = coord1.separation(coord2)
+        return separation.arcsecond
+
+    def is_related(self, other: 'Candidate', period_thresh: float,
+                   dm_thresh: float, pos_thresh: float) -> Tuple[bool, float, float, float]:
+        """
+        Check if another candidate is related based on DM, period, and position.
 
         Implements orbit demodulation to compare periods in the same reference frame.
+        Uses each candidate's tobs value determined from their png_path.
 
         Args:
             other: Another candidate to compare with
             period_thresh: Period threshold for matching (seconds)
             dm_thresh: DM threshold for matching (pc/cm³)
-            tobs_over_c: Observation time / speed of light for demodulation
+            pos_thresh: Position threshold for matching (arcseconds)
 
         Returns:
-            Tuple of (is_related, delta_dm, delta_period)
+            Tuple of (is_related, delta_dm, delta_period, angular_distance)
         """
         # Check DM threshold first (fast rejection)
         delta_dm = abs(self.dm - other.dm)
         if delta_dm > dm_thresh:
-            return False, delta_dm, float('inf')
+            return False, delta_dm, float('inf'), float('inf')
+
+        # Check position threshold (fast rejection)
+        angular_dist = self.angular_distance(other)
+        if angular_dist > pos_thresh:
+            return False, delta_dm, float('inf'), angular_dist
 
         # Demodulate the orbit to compare periods in same reference frame
+        # Use the other candidate's tobs value for demodulation
+        c = 299792458.0  # Speed of light in m/s
+        other_tobs_over_c = other.tobs / c
+
         # Correct the other candidate's period for acceleration difference
-        corrected_other_f0 = other.f0 - (other.acc - self.acc) * other.f0 * tobs_over_c
+        corrected_other_f0 = other.f0 - (other.acc - self.acc) * other.f0 * other_tobs_over_c
 
         if corrected_other_f0 <= 0:
-            return False, delta_dm, float('inf')
+            return False, delta_dm, float('inf'), angular_dist
 
         corrected_other_period = 1.0 / corrected_other_f0
 
@@ -129,7 +222,7 @@ class Candidate:
             is_match = direct_period_difference <= period_thresh
             delta_period = direct_period_difference
 
-        return is_match, delta_dm, delta_period
+        return is_match, delta_dm, delta_period, angular_dist
 
 
 def find_png_file(png_path: str, base_dirs: List[str], verbose: bool = False) -> Optional[str]:
@@ -230,10 +323,9 @@ def load_candidates(csv_path: str, obs_name: str) -> List[Candidate]:
 
 
 def create_comparison_plot(cand1: Candidate, cand2: Candidate,
-                          delta_dm: float, delta_period: float,
+                          delta_dm: float, delta_period: float, angular_dist: float,
                           base_dirs1: List[str], base_dirs2: List[str],
-                          output_dir: str, match_idx: int,
-                          tobs_over_c: float):
+                          output_dir: str, match_idx: int):
     """
     Create a comparison plot showing both candidates and their delta values.
 
@@ -242,11 +334,11 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
         cand2: Second candidate (from OBS2)
         delta_dm: DM difference
         delta_period: Period difference
+        angular_dist: Angular distance in arcseconds
         base_dirs1: Base directories to search for OBS1 PNGs
         base_dirs2: Base directories to search for OBS2 PNGs
         output_dir: Directory to save output plot
         match_idx: Index of this match (for filename)
-        tobs_over_c: Observation time / speed of light for demodulation
     """
     # Find PNG files
     print(f"  Searching for {cand1.obs_name} PNG...")
@@ -255,20 +347,26 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
     print(f"  Searching for {cand2.obs_name} PNG...")
     png2 = find_png_file(cand2.png_path, base_dirs2, verbose=True)
 
-    # Calculate demodulated period for cand2
-    corrected_f0 = cand2.f0 - (cand2.acc - cand1.acc) * cand2.f0 * tobs_over_c
+    # Calculate demodulated period for cand2 using its tobs value
+    c = 299792458.0  # Speed of light in m/s
+    cand2_tobs_over_c = cand2.tobs / c
+    corrected_f0 = cand2.f0 - (cand2.acc - cand1.acc) * cand2.f0 * cand2_tobs_over_c
     corrected_period = 1.0 / corrected_f0 if corrected_f0 > 0 else 0.0
 
-    # Create figure with adjusted layout for table
-    fig = plt.figure(figsize=(20, 10))
-    gs = GridSpec(3, 2, figure=fig, height_ratios=[0.8, 0.8, 4], hspace=0.3, wspace=0.2)
+    # Calculate (ΔP / P) / c
+    c = 299792458.0  # Speed of light in m/s
+    delta_p_over_p_over_c = (delta_period / cand1.period) / c if cand1.period > 0 else 0.0
+
+    # Create figure with adjusted layout for table (25% bigger PNGs)
+    fig = plt.figure(figsize=(25, 12.5))
+    gs = GridSpec(3, 2, figure=fig, height_ratios=[0.6, 1.2, 4], hspace=0.6, wspace=0.2)
 
     # Title with delta values
     title_ax = fig.add_subplot(gs[0, :])
     title_ax.axis('off')
     title_text = (
         f"Matched Candidates: {cand1.obs_name} ↔ {cand2.obs_name}\n"
-        f"ΔDM = {delta_dm:.2f} pc/cm³  |  ΔP₀ (demodulated) = {delta_period*1000:.4f} ms"
+        f"ΔDM = {delta_dm:.2f} pc/cm³  |  ΔP₀ (demodulated) = {delta_period*1000:.4f} ms  |  Angular Distance = {angular_dist:.2f} arcsec"
     )
     title_ax.text(0.5, 0.5, title_text, ha='center', va='center',
                  fontsize=14, fontweight='bold', transform=title_ax.transAxes)
@@ -285,8 +383,13 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
          f'{abs(cand1.period - cand2.period)*1000:.6f}'],
         ['P₀_demod (ms)', f'{cand1.period*1000:.6f}', f'{corrected_period*1000:.6f}',
          f'{delta_period*1000:.6f}'],
+        ['(ΔP/P)/c', '', '', f'{delta_p_over_p_over_c:.6e}'],
         ['Acc (m/s²)', f'{cand1.acc:.6e}', f'{cand2.acc:.6e}',
-         f'{abs(cand1.acc - cand2.acc):.6e}']
+         f'{abs(cand1.acc - cand2.acc):.6e}'],
+        ['Tobs (s)', f'{cand1.tobs:.0f}', f'{cand2.tobs:.0f}', ''],
+        ['RA', str(cand1.ra), str(cand2.ra), ''],
+        ['DEC', str(cand1.dec), str(cand2.dec), ''],
+        ['Angular Dist (arcsec)', '', '', f'{angular_dist:.6f}']
     ]
 
     table = table_ax.table(cellText=table_data, cellLoc='center', loc='center',
@@ -301,7 +404,7 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
         table[(0, i)].set_text_props(weight='bold', color='white')
 
     # Alternate row colors
-    for i in range(1, 5):
+    for i in range(1, 10):
         for j in range(4):
             if i % 2 == 0:
                 table[(i, j)].set_facecolor('#f0f0f0')
@@ -343,9 +446,10 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
 def compare_observations(csv1: str, csv2: str,
                         base_dirs1: List[str], base_dirs2: List[str],
                         output_dir: str,
-                        dm_thresh: float = 100.0,
-                        period_thresh: float = 0.001,
-                        tobs: float = 1800.0):
+                        dm_thresh: float = 1.0,
+                        period_thresh: float = 5e-6,
+                        pos_thresh: float = 30.0,
+                        ignore_periods: Optional[List[float]] = None):
     """
     Compare T1 candidates between two observations.
 
@@ -355,15 +459,17 @@ def compare_observations(csv1: str, csv2: str,
         base_dirs1: Base directories to search for OBS1 PNGs
         base_dirs2: Base directories to search for OBS2 PNGs
         output_dir: Directory to save comparison plots
-        dm_thresh: DM threshold for matching (pc/cm³)
-        period_thresh: Period threshold for matching (seconds)
-        tobs: Observation time (seconds) for orbit demodulation
+        dm_thresh: DM threshold for matching (pc/cm³, default: 1.0)
+        period_thresh: Period threshold for matching (seconds, default: 5e-6)
+        pos_thresh: Position threshold for matching (arcseconds, default: 30.0)
+        ignore_periods: List of periods (in seconds) to ignore. Candidates with periods
+                       matching these values (within period_thresh) will be excluded.
     """
-    # Speed of light in m/s
-    c = 299792458.0
-    tobs_over_c = tobs / c
+    # Default ignore periods if not specified
+    if ignore_periods is None:
+        ignore_periods = []
 
-    # Load candidates
+    # Load candidates (tobs is automatically determined from png_path)
     print("\n" + "="*60)
     print("LOADING CANDIDATES")
     print("="*60)
@@ -377,6 +483,26 @@ def compare_observations(csv1: str, csv2: str,
         print("Error: No T1 candidates found in OBS2")
         return
 
+    # Filter out ignored frequencies
+    if ignore_periods:
+        print(f"\nFiltering candidates with ignored periods: {[p*1000 for p in ignore_periods]} ms")
+        initial_count1 = len(candidates1)
+        initial_count2 = len(candidates2)
+
+        candidates1 = [c for c in candidates1 if not c.is_ignored_frequency(ignore_periods, period_thresh)]
+        candidates2 = [c for c in candidates2 if not c.is_ignored_frequency(ignore_periods, period_thresh)]
+
+        filtered1 = initial_count1 - len(candidates1)
+        filtered2 = initial_count2 - len(candidates2)
+        print(f"Filtered {filtered1} candidates from OBS1, {filtered2} from OBS2")
+
+    if not candidates1:
+        print("Error: No T1 candidates remaining in OBS1 after filtering")
+        return
+    if not candidates2:
+        print("Error: No T1 candidates remaining in OBS2 after filtering")
+        return
+
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
@@ -384,8 +510,8 @@ def compare_observations(csv1: str, csv2: str,
     print("\n" + "="*60)
     print("COMPARING CANDIDATES")
     print("="*60)
-    print(f"Thresholds: ΔDM ≤ {dm_thresh} pc/cm³, ΔP₀ ≤ {period_thresh*1000} ms")
-    print(f"Observation time: {tobs} s")
+    print(f"Thresholds: ΔDM ≤ {dm_thresh} pc/cm³, ΔP₀ ≤ {period_thresh*1000} ms, Position ≤ {pos_thresh} arcsec")
+    print(f"Note: Tobs values are automatically determined from png_path")
     print()
 
     matches = []
@@ -393,30 +519,31 @@ def compare_observations(csv1: str, csv2: str,
 
     for i, cand1 in enumerate(candidates1):
         print(f"Checking OBS1 candidate {i+1}/{len(candidates1)} "
-              f"(DM={cand1.dm:.2f}, P₀={cand1.period*1000:.4f} ms)...")
+              f"(DM={cand1.dm:.2f}, P₀={cand1.period*1000:.4f} ms, Tobs={cand1.tobs:.0f}s, RA={cand1.ra}, DEC={cand1.dec})...")
 
         for j, cand2 in enumerate(candidates2):
-            is_match, delta_dm, delta_period = cand1.is_related(
-                cand2, period_thresh, dm_thresh, tobs_over_c
+            is_match, delta_dm, delta_period, angular_dist = cand1.is_related(
+                cand2, period_thresh, dm_thresh, pos_thresh
             )
 
             if is_match:
                 print(f"  ✓ Match with OBS2 candidate {j+1}: "
-                      f"ΔDM={delta_dm:.2f}, ΔP₀={delta_period*1000:.4f} ms")
+                      f"ΔDM={delta_dm:.2f}, ΔP₀={delta_period*1000:.4f} ms, AngDist={angular_dist:.2f} arcsec")
 
                 matches.append({
                     'obs1_idx': i,
                     'obs2_idx': j,
                     'delta_dm': delta_dm,
                     'delta_period': delta_period,
+                    'angular_dist': angular_dist,
                     'cand1': cand1,
                     'cand2': cand2
                 })
 
                 # Create comparison plot
                 create_comparison_plot(
-                    cand1, cand2, delta_dm, delta_period,
-                    base_dirs1, base_dirs2, output_dir, match_idx, tobs_over_c
+                    cand1, cand2, delta_dm, delta_period, angular_dist,
+                    base_dirs1, base_dirs2, output_dir, match_idx
                 )
                 match_idx += 1
 
@@ -436,10 +563,17 @@ def compare_observations(csv1: str, csv2: str,
             summary_data.append({
                 'obs1_dm': match['cand1'].dm,
                 'obs1_period_ms': match['cand1'].period * 1000,
+                'obs1_tobs_s': match['cand1'].tobs,
+                'obs1_ra': match['cand1'].ra,
+                'obs1_dec': match['cand1'].dec,
                 'obs2_dm': match['cand2'].dm,
                 'obs2_period_ms': match['cand2'].period * 1000,
+                'obs2_tobs_s': match['cand2'].tobs,
+                'obs2_ra': match['cand2'].ra,
+                'obs2_dec': match['cand2'].dec,
                 'delta_dm': match['delta_dm'],
                 'delta_period_ms': match['delta_period'] * 1000,
+                'angular_dist_arcsec': match['angular_dist'],
                 'obs1_png': match['cand1'].png_path,
                 'obs2_png': match['cand2'].png_path
             })
@@ -461,10 +595,12 @@ Examples:
   %(prog)s obs1_full.csv obs2_full.csv \\
     --base-dir1 /data/obs1 \\
     --base-dir2 /data/obs2 \\
-    --dm-thresh 50 \\
-    --period-thresh 0.0005 \\
+    --dm-thresh 2.0 \\
+    --period-thresh 1e-5 \\
+    --pos-thresh 60.0 \\
+    --ignore-periods 3.928 4.44 6.06 \\
     -o matches
-        """
+        """ 
     )
 
     parser.add_argument('csv1', help='First observation *_full.csv file (OBS1)')
@@ -475,14 +611,22 @@ Examples:
                        help='Base directory to search for OBS1 PNGs (can specify multiple)')
     parser.add_argument('--base-dir2', action='append', default=[],
                        help='Base directory to search for OBS2 PNGs (can specify multiple)')
-    parser.add_argument('--dm-thresh', type=float, default=100.0,
-                       help='DM threshold for matching in pc/cm³ (default: 100.0)')
-    parser.add_argument('--period-thresh', type=float, default=0.001,
-                       help='Period threshold for matching in seconds (default: 0.001)')
-    parser.add_argument('--tobs', type=float, default=1800.0,
-                       help='Observation time in seconds for orbit demodulation (default: 1800.0)')
+    parser.add_argument('--dm-thresh', type=float, default=1.0,
+                       help='DM threshold for matching in pc/cm³ (default: 1.0)')
+    parser.add_argument('--period-thresh', type=float, default=5e-6,
+                       help='Period threshold for matching in seconds (default: 5e-6)')
+    parser.add_argument('--pos-thresh', type=float, default=30.0,
+                       help='Position threshold for matching in arcseconds (default: 30.0)')
+    parser.add_argument('--ignore-periods', type=float, nargs='*', default=None,
+                       help='Periods (in milliseconds) to ignore. Candidates with these periods will be excluded. '
+                            'Example: --ignore-periods 3.928 4.44 6.06')
 
     args = parser.parse_args()
+
+    # Convert ignore periods from milliseconds to seconds
+    ignore_periods = None
+    if args.ignore_periods is not None:
+        ignore_periods = [p / 1000.0 for p in args.ignore_periods]
 
     # If no base directories specified, use the directory of the CSV file
     base_dirs1 = args.base_dir1 if args.base_dir1 else [os.path.dirname(os.path.abspath(args.csv1))]
@@ -495,7 +639,8 @@ Examples:
         args.output_dir,
         args.dm_thresh,
         args.period_thresh,
-        args.tobs
+        args.pos_thresh,
+        ignore_periods
     )
 
 
