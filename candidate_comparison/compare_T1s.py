@@ -285,6 +285,7 @@ def find_png_file(png_path: str, base_dirs: List[str], verbose: bool = False) ->
 def load_candidates(csv_path: str, obs_name: str) -> List[Candidate]:
     """
     Load T1 classified candidates from a CSV file.
+    If no classification column exists, loads all candidates.
 
     Args:
         csv_path: Path to *_full.csv file
@@ -295,8 +296,7 @@ def load_candidates(csv_path: str, obs_name: str) -> List[Candidate]:
     """
     df = pd.read_csv(csv_path)
 
-    # Filter for T1 classifications
-    # Assuming classification column is named 'classification' or 'class'
+    # Check for classification column
     class_col = None
     for col in ['classification', 'class', 'Classification', 'Class']:
         if col in df.columns:
@@ -304,12 +304,13 @@ def load_candidates(csv_path: str, obs_name: str) -> List[Candidate]:
             break
 
     if class_col is None:
-        raise ValueError(f"Could not find classification column in {csv_path}")
-
-    # Filter for T1 - handle both 'T1' and 'T1_CAND' values
-    t1_df = df[df[class_col].str.contains('T1', case=False, na=False)]
-
-    print(f"Loaded {len(t1_df)} T1 candidates from {obs_name}")
+        # No classification column - use all candidates
+        print(f"No classification column found in {obs_name}, using all {len(df)} candidates")
+        t1_df = df
+    else:
+        # Filter for T1 - handle both 'T1' and 'T1_CAND' values
+        t1_df = df[df[class_col].str.contains('T1', case=False, na=False)]
+        print(f"Loaded {len(t1_df)} T1 candidates from {obs_name}")
 
     candidates = []
     for _, row in t1_df.iterrows():
@@ -353,15 +354,18 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
     corrected_f0 = cand2.f0 - (cand2.acc - cand1.acc) * cand2.f0 * cand2_tobs_over_c
     corrected_period = 1.0 / corrected_f0 if corrected_f0 > 0 else 0.0
 
-    # Calculate (ΔP / P) / c
+    # Calculate change in velocity: c * (p2-p1) / (0.5*(p1+p2))
     c = 299792458.0  # Speed of light in m/s
-    delta_p_over_p_over_c = (delta_period / cand1.period) / c if cand1.period > 0 else 0.0
+    p1 = cand1.period
+    p2 = corrected_period
+    delta_velocity = c * (p2 - p1) / (0.5 * (p1 + p2)) if (p1 + p2) > 0 else 0.0
 
-    # Create figure with adjusted layout for table (25% bigger PNGs)
-    fig = plt.figure(figsize=(25, 12.5))
-    gs = GridSpec(3, 2, figure=fig, height_ratios=[0.6, 1.2, 4], hspace=0.6, wspace=0.2)
+    # Create figure with 3-column layout: title on top, table on left, PNGs on right
+    fig = plt.figure(figsize=(25, 10))
+    gs = GridSpec(2, 3, figure=fig, height_ratios=[0.4, 5], width_ratios=[1.5, 1.75, 1.75],
+                  hspace=0.3, wspace=0.15)
 
-    # Title with delta values
+    # Title with delta values (spans all columns)
     title_ax = fig.add_subplot(gs[0, :])
     title_ax.axis('off')
     title_text = (
@@ -371,8 +375,8 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
     title_ax.text(0.5, 0.5, title_text, ha='center', va='center',
                  fontsize=14, fontweight='bold', transform=title_ax.transAxes)
 
-    # Table with parameters
-    table_ax = fig.add_subplot(gs[1, :])
+    # Table with parameters (left column)
+    table_ax = fig.add_subplot(gs[1, 0])
     table_ax.axis('off')
 
     # Create table data
@@ -383,7 +387,7 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
          f'{abs(cand1.period - cand2.period)*1000:.6f}'],
         ['P₀_demod (ms)', f'{cand1.period*1000:.6f}', f'{corrected_period*1000:.6f}',
          f'{delta_period*1000:.6f}'],
-        ['(ΔP/P)/c', '', '', f'{delta_p_over_p_over_c:.6e}'],
+        ['ΔV (m/s)', '', '', f'{delta_velocity:.6f}'],
         ['Acc (m/s²)', f'{cand1.acc:.6e}', f'{cand2.acc:.6e}',
          f'{abs(cand1.acc - cand2.acc):.6e}'],
         ['Tobs (s)', f'{cand1.tobs:.0f}', f'{cand2.tobs:.0f}', ''],
@@ -395,8 +399,8 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
     table = table_ax.table(cellText=table_data, cellLoc='center', loc='center',
                           colWidths=[0.25, 0.25, 0.25, 0.25])
     table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1, 2)
+    table.set_fontsize(9)
+    table.scale(1, 2.5)
 
     # Style header row
     for i in range(4):
@@ -409,8 +413,8 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
             if i % 2 == 0:
                 table[(i, j)].set_facecolor('#f0f0f0')
 
-    # Display first PNG (left side)
-    ax1 = fig.add_subplot(gs[2, 0])
+    # Display first PNG (middle column)
+    ax1 = fig.add_subplot(gs[1, 1])
     if png1 and os.path.exists(png1):
         img1 = Image.open(png1)
         ax1.imshow(img1)
@@ -422,8 +426,8 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
         ax1.set_title(f"{cand1.obs_name}", fontsize=12, fontweight='bold')
     ax1.axis('off')
 
-    # Display second PNG (right side)
-    ax2 = fig.add_subplot(gs[2, 1])
+    # Display second PNG (right column)
+    ax2 = fig.add_subplot(gs[1, 2])
     if png2 and os.path.exists(png2):
         img2 = Image.open(png2)
         ax2.imshow(img2)
@@ -435,8 +439,9 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
         ax2.set_title(f"{cand2.obs_name}", fontsize=12, fontweight='bold')
     ax2.axis('off')
 
-    # Save plot
-    output_path = os.path.join(output_dir, f"match_{match_idx:03d}.png")
+    # Save plot with P₀ in filename
+    p0_ms = cand1.period * 1000  # Convert to milliseconds
+    output_path = os.path.join(output_dir, f"match_{match_idx:03d}_{p0_ms:.1f}ms.png")
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
