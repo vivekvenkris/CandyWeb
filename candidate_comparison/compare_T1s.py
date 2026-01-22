@@ -21,6 +21,7 @@ from matplotlib.gridspec import GridSpec
 from PIL import Image
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+from multiprocessing import Pool, Manager, cpu_count
 
 
 class Candidate:
@@ -134,7 +135,7 @@ class Candidate:
             True if this candidate should be ignored, False otherwise
         """
         for ignore_period in ignore_periods:
-            if abs(self.period - ignore_period) <= period_thresh:
+            if abs(self.period - ignore_period) <= 10*period_thresh:
                 return True
         return False
 
@@ -326,7 +327,7 @@ def load_candidates(csv_path: str, obs_name: str) -> List[Candidate]:
 def create_comparison_plot(cand1: Candidate, cand2: Candidate,
                           delta_dm: float, delta_period: float, angular_dist: float,
                           base_dirs1: List[str], base_dirs2: List[str],
-                          output_dir: str, match_idx: int):
+                          output_dir: str, match_idx: int, verbose: bool = True):
     """
     Create a comparison plot showing both candidates and their delta values.
 
@@ -340,13 +341,16 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
         base_dirs2: Base directories to search for OBS2 PNGs
         output_dir: Directory to save output plot
         match_idx: Index of this match (for filename)
+        verbose: If True, print search progress
     """
     # Find PNG files
-    print(f"  Searching for {cand1.obs_name} PNG...")
-    png1 = find_png_file(cand1.png_path, base_dirs1, verbose=True)
+    if verbose:
+        print(f"  Searching for {cand1.obs_name} PNG...")
+    png1 = find_png_file(cand1.png_path, base_dirs1, verbose=verbose)
 
-    print(f"  Searching for {cand2.obs_name} PNG...")
-    png2 = find_png_file(cand2.png_path, base_dirs2, verbose=True)
+    if verbose:
+        print(f"  Searching for {cand2.obs_name} PNG...")
+    png2 = find_png_file(cand2.png_path, base_dirs2, verbose=verbose)
 
     # Calculate demodulated period for cand2 using its tobs value
     c = 299792458.0  # Speed of light in m/s
@@ -358,7 +362,8 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
     c = 299792458.0  # Speed of light in m/s
     p1 = cand1.period
     p2 = corrected_period
-    delta_velocity = c * (p2 - p1) / (0.5 * (p1 + p2)) if (p1 + p2) > 0 else 0.0
+    delta_velocity_ms = c * (p2 - p1) / (0.5 * (p1 + p2)) if (p1 + p2) > 0 else 0.0
+    delta_velocity_kms = delta_velocity_ms / 1000.0  # Convert to km/s
 
     # Create figure with 3-column layout: title on top, table on left, PNGs on right
     fig = plt.figure(figsize=(25, 10))
@@ -387,7 +392,7 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
          f'{abs(cand1.period - cand2.period)*1000:.6f}'],
         ['P₀_demod (ms)', f'{cand1.period*1000:.6f}', f'{corrected_period*1000:.6f}',
          f'{delta_period*1000:.6f}'],
-        ['ΔV (m/s)', '', '', f'{delta_velocity:.6f}'],
+        ['ΔV (km/s)', '', '', f'{delta_velocity_kms:.1f}'],
         ['Acc (m/s²)', f'{cand1.acc:.6e}', f'{cand2.acc:.6e}',
          f'{abs(cand1.acc - cand2.acc):.6e}'],
         ['Tobs (s)', f'{cand1.tobs:.0f}', f'{cand2.tobs:.0f}', ''],
@@ -445,7 +450,62 @@ def create_comparison_plot(cand1: Candidate, cand2: Candidate,
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
-    print(f"  Saved: {output_path}")
+    if verbose:
+        print(f"  Saved: {output_path}")
+
+
+def _process_candidate_worker(args):
+    """
+    Worker function for parallel processing of candidate comparisons.
+
+    Args:
+        args: Tuple containing (cand1, cand1_idx, candidates2, period_thresh,
+              dm_thresh, pos_thresh, base_dirs1, base_dirs2, output_dir,
+              match_counter, lock)
+
+    Returns:
+        List of match dictionaries for this cand1
+    """
+    (cand1, cand1_idx, candidates2, period_thresh, dm_thresh, pos_thresh,
+     base_dirs1, base_dirs2, output_dir, match_counter, lock) = args
+
+    local_matches = []
+
+    print(f"Checking OBS1 candidate {cand1_idx+1} "
+          f"(DM={cand1.dm:.2f}, P₀={cand1.period*1000:.4f} ms, Tobs={cand1.tobs:.0f}s, RA={cand1.ra}, DEC={cand1.dec})...")
+
+    for j, cand2 in enumerate(candidates2):
+        is_match, delta_dm, delta_period, angular_dist = cand1.is_related(
+            cand2, period_thresh, dm_thresh, pos_thresh
+        )
+
+        if is_match:
+            print(f"  ✓ Match with OBS2 candidate {j+1}: "
+                  f"ΔDM={delta_dm:.2f}, ΔP₀={delta_period*1000:.4f} ms, AngDist={angular_dist:.2f} arcsec")
+
+            # Get next match index in a thread-safe manner
+            with lock:
+                match_idx = match_counter.value
+                match_counter.value += 1
+
+            local_matches.append({
+                'obs1_idx': cand1_idx,
+                'obs2_idx': j,
+                'delta_dm': delta_dm,
+                'delta_period': delta_period,
+                'angular_dist': angular_dist,
+                'cand1': cand1,
+                'cand2': cand2,
+                'match_idx': match_idx
+            })
+
+            # Create comparison plot (verbose=False to reduce output clutter in parallel mode)
+            create_comparison_plot(
+                cand1, cand2, delta_dm, delta_period, angular_dist,
+                base_dirs1, base_dirs2, output_dir, match_idx, verbose=False
+            )
+
+    return local_matches
 
 
 def compare_observations(csv1: str, csv2: str,
@@ -454,7 +514,8 @@ def compare_observations(csv1: str, csv2: str,
                         dm_thresh: float = 1.0,
                         period_thresh: float = 5e-6,
                         pos_thresh: float = 30.0,
-                        ignore_periods: Optional[List[float]] = None):
+                        ignore_periods: Optional[List[float]] = None,
+                        nthreads: Optional[int] = None):
     """
     Compare T1 candidates between two observations.
 
@@ -469,6 +530,7 @@ def compare_observations(csv1: str, csv2: str,
         pos_thresh: Position threshold for matching (arcseconds, default: 30.0)
         ignore_periods: List of periods (in seconds) to ignore. Candidates with periods
                        matching these values (within period_thresh) will be excluded.
+        nthreads: Number of parallel threads to use. If None, uses all available CPU cores.
     """
     # Default ignore periods if not specified
     if ignore_periods is None:
@@ -511,46 +573,39 @@ def compare_observations(csv1: str, csv2: str,
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
+    # Determine number of threads
+    if nthreads is None:
+        nthreads = cpu_count()
+
     # Compare candidates
     print("\n" + "="*60)
     print("COMPARING CANDIDATES")
     print("="*60)
     print(f"Thresholds: ΔDM ≤ {dm_thresh} pc/cm³, ΔP₀ ≤ {period_thresh*1000} ms, Position ≤ {pos_thresh} arcsec")
     print(f"Note: Tobs values are automatically determined from png_path")
+    print(f"Using {nthreads} parallel threads")
     print()
 
-    matches = []
-    match_idx = 0
+    # Create shared counter and lock for thread-safe match numbering
+    with Manager() as manager:
+        match_counter = manager.Value('i', 0)
+        lock = manager.Lock()
 
-    for i, cand1 in enumerate(candidates1):
-        print(f"Checking OBS1 candidate {i+1}/{len(candidates1)} "
-              f"(DM={cand1.dm:.2f}, P₀={cand1.period*1000:.4f} ms, Tobs={cand1.tobs:.0f}s, RA={cand1.ra}, DEC={cand1.dec})...")
+        # Prepare arguments for parallel processing
+        worker_args = [
+            (cand1, i, candidates2, period_thresh, dm_thresh, pos_thresh,
+             base_dirs1, base_dirs2, output_dir, match_counter, lock)
+            for i, cand1 in enumerate(candidates1)
+        ]
 
-        for j, cand2 in enumerate(candidates2):
-            is_match, delta_dm, delta_period, angular_dist = cand1.is_related(
-                cand2, period_thresh, dm_thresh, pos_thresh
-            )
+        # Process candidates in parallel
+        matches = []
+        with Pool(processes=nthreads) as pool:
+            results = pool.map(_process_candidate_worker, worker_args)
 
-            if is_match:
-                print(f"  ✓ Match with OBS2 candidate {j+1}: "
-                      f"ΔDM={delta_dm:.2f}, ΔP₀={delta_period*1000:.4f} ms, AngDist={angular_dist:.2f} arcsec")
-
-                matches.append({
-                    'obs1_idx': i,
-                    'obs2_idx': j,
-                    'delta_dm': delta_dm,
-                    'delta_period': delta_period,
-                    'angular_dist': angular_dist,
-                    'cand1': cand1,
-                    'cand2': cand2
-                })
-
-                # Create comparison plot
-                create_comparison_plot(
-                    cand1, cand2, delta_dm, delta_period, angular_dist,
-                    base_dirs1, base_dirs2, output_dir, match_idx
-                )
-                match_idx += 1
+            # Flatten results from all workers
+            for result in results:
+                matches.extend(result)
 
     # Summary
     print("\n" + "="*60)
@@ -625,6 +680,8 @@ Examples:
     parser.add_argument('--ignore-periods', type=float, nargs='*', default=None,
                        help='Periods (in milliseconds) to ignore. Candidates with these periods will be excluded. '
                             'Example: --ignore-periods 3.928 4.44 6.06')
+    parser.add_argument('--nthreads', type=int, default=None,
+                       help='Number of parallel threads to use (default: all available CPU cores)')
 
     args = parser.parse_args()
 
@@ -645,7 +702,8 @@ Examples:
         args.dm_thresh,
         args.period_thresh,
         args.pos_thresh,
-        ignore_periods
+        ignore_periods,
+        args.nthreads
     )
 
 
